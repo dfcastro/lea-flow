@@ -41,7 +41,9 @@ Route::middleware(['auth', 'can:gerir-equipe'])->group(function () {
         return view('equipe.index');
     })->name('users.index');
 
-    // Nota: Como estamos a usar Volt, não precisamos mais do UserController@store aqui
+    Route::get('/processos', function () {
+        return view('processos.index');
+    })->name('processos.index');
 });
 
 require __DIR__ . '/auth.php';
