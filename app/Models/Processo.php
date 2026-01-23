@@ -24,7 +24,11 @@ class Processo extends Model
         'data_prazo' => 'date',
         'valor_causa' => 'decimal:2'
     ];
-
+    // No arquivo App\Models\Processo.php
+    public function historico()
+    {
+        return $this->hasMany(ProcessoHistorico::class)->latest();
+    }
     // PADRÃO DE NOME: Apenas a primeira letra maiúscula (Title Case)
     public function setTituloAttribute($value)
     {

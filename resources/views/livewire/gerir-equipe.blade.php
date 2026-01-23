@@ -103,8 +103,8 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                     <div class="text-left">
                         <h2 class="text-2xl font-black text-gray-900 tracking-tighter uppercase">
                             {{ $isEditing ? 'Editar Perfil' : 'Gestão de Equipe' }}</h2>
-                        <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest text-left">
-                            Controle de Colaboradores • L&A Flow</p>
+                        <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest text-left">Controle de
+                            Colaboradores • L&A Flow</p>
                     </div>
                 </div>
                 @if($isEditing)
@@ -115,25 +115,33 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
 
             <form wire:submit.prevent="salvar" class="grid grid-cols-1 md:grid-cols-12 gap-x-6 gap-y-5 text-left"
                 wire:key="form-equipe-{{ $formId }}">
+
                 <div class="md:col-span-6 text-left">
-                    <x-input-label value="NOME COMPLETO" class="text-[10px] font-bold text-gray-400 " />
+                    <x-input-label value="NOME COMPLETO" class="text-[10px] font-bold text-gray-400 uppercase" />
                     <x-text-input wire:model="name" type="text"
-                        class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold " />
+                        class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold uppercase" />
+                    <x-input-error :messages="$errors->get('name')" class="mt-1" />
                 </div>
+
                 <div class="md:col-span-3 text-left">
                     <x-input-label value="CPF" class="text-[10px] font-bold text-gray-400 uppercase" />
                     <x-text-input wire:model="cpf" type="text"
                         class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold" x-mask="999.999.999-99" />
+                    <x-input-error :messages="$errors->get('cpf')" class="mt-1" />
                 </div>
+
                 <div class="md:col-span-3 text-left">
                     <x-input-label value="E-MAIL CORPORATIVO" class="text-[10px] font-bold text-gray-400 uppercase" />
                     <x-text-input wire:model="email" type="email"
                         class="w-full mt-1 bg-gray-50 border-none shadow-inner font-medium" />
+                    <x-input-error :messages="$errors->get('email')" class="mt-1" />
                 </div>
+
                 <div class="md:col-span-3 text-left">
                     <x-input-label value="SENHA" class="text-[10px] font-bold text-gray-400 uppercase" />
                     <x-text-input wire:model="password" type="password"
                         class="w-full mt-1 bg-gray-50 border-none shadow-inner" />
+                    <x-input-error :messages="$errors->get('password')" class="mt-1" />
                 </div>
 
                 <div class="md:col-span-3 text-left">
@@ -146,6 +154,7 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                         <option value="Estagiário">Estagiário</option>
                         <option value="Financeiro">Financeiro</option>
                     </select>
+                    <x-input-error :messages="$errors->get('cargo')" class="mt-1" />
                 </div>
 
                 <div class="md:col-span-3 text-left">
@@ -155,6 +164,7 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                         <option value="user">Comum</option>
                         <option value="admin">Admin</option>
                     </select>
+                    <x-input-error :messages="$errors->get('role')" class="mt-1" />
                 </div>
 
                 <div class="md:col-span-3 flex items-end">
