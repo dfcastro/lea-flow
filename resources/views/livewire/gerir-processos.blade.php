@@ -269,39 +269,39 @@ with(fn() => [
                     <div class="md:col-span-4"><x-input-label value="STATUS"
                             class="text-[10px] font-bold text-gray-400" /><select wire:model="status"
                             class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                             <optgroup label="🔵 INICIAL">
-                                            <option>Distribuído</option>
-                                            <option>Petição Inicial</option>
-                                            <option>Aguardando Citação</option>
-                                        </optgroup>
-                                        <optgroup label="🟢 TRAMITAÇÃO">
-                                            <option>Em Andamento</option>
-                                            <option>Concluso para Decisão</option>
-                                            <option>Instrução</option>
-                                            <option>Contestação/Réplica</option>
-                                        </optgroup>
-                                        <optgroup label="🟡 AGENDAMENTOS">
-                                            <option>Audiência Designada</option>
-                                            <option>Aguardando Audiência</option>
-                                            <option>Perícia Designada</option>
-                                            <option>Apresentação de Laudo</option>
-                                        </optgroup>
-                                        <optgroup label="🔴 URGÊNCIA">
-                                            <option>Prazo em Aberto</option>
-                                            <option>Urgência / Liminar</option>
-                                            <option>Aguardando Protocolo</option>
-                                        </optgroup>
-                                        <optgroup label="🟣 DECISÃO">
-                                            <option>Sentenciado</option>
-                                            <option>Em Grau de Recurso</option>
-                                            <option>Cumprimento de Sentença</option>
-                                            <option>Acordo/Pagamento</option>
-                                        </optgroup>
-                                        <optgroup label="⚪ FINALIZADO">
-                                            <option>Trânsito em Julgado</option>
-                                            <option>Suspenso / Sobrestado</option>
-                                            <option>Arquivado</option>
-                                        </optgroup>
+                            <optgroup label="🔵 INICIAL">
+                                <option>Distribuído</option>
+                                <option>Petição Inicial</option>
+                                <option>Aguardando Citação</option>
+                            </optgroup>
+                            <optgroup label="🟢 TRAMITAÇÃO">
+                                <option>Em Andamento</option>
+                                <option>Concluso para Decisão</option>
+                                <option>Instrução</option>
+                                <option>Contestação/Réplica</option>
+                            </optgroup>
+                            <optgroup label="🟡 AGENDAMENTOS">
+                                <option>Audiência Designada</option>
+                                <option>Aguardando Audiência</option>
+                                <option>Perícia Designada</option>
+                                <option>Apresentação de Laudo</option>
+                            </optgroup>
+                            <optgroup label="🔴 URGÊNCIA">
+                                <option>Prazo em Aberto</option>
+                                <option>Urgência / Liminar</option>
+                                <option>Aguardando Protocolo</option>
+                            </optgroup>
+                            <optgroup label="🟣 DECISÃO">
+                                <option>Sentenciado</option>
+                                <option>Em Grau de Recurso</option>
+                                <option>Cumprimento de Sentença</option>
+                                <option>Acordo/Pagamento</option>
+                            </optgroup>
+                            <optgroup label="⚪ FINALIZADO">
+                                <option>Trânsito em Julgado</option>
+                                <option>Suspenso / Sobrestado</option>
+                                <option>Arquivado</option>
+                            </optgroup>
                         </select><x-input-error :messages="$errors->get('status')" class="mt-1" /></div>
                     <div class="md:col-span-3"><x-input-label value="PRAZO"
                             class="text-[10px] font-bold text-rose-500" /><x-text-input wire:model="data_prazo" type="date"
@@ -343,15 +343,19 @@ with(fn() => [
                     </button>
                 </div>
 
-                <div class="relative w-full md:w-72 group">
-                    <input wire:model.live.debounce.300ms="search" type="text" 
-                        class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-4 pr-10 text-xs font-bold uppercase tracking-wide text-gray-700 placeholder-gray-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" 
-                        placeholder="Buscar por CNJ, advogado..." />
-                    
-                    <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-focus-within:text-indigo-500 transition-colors">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                <div class="w-full md:w-72">
+                    <div class="flex items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-0.5 transition-all shadow-sm focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500/20">
+                        <div class="shrink-0 text-gray-400">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <input 
+                            wire:model.live.debounce.300ms="search" 
+                            type="text" 
+                            class="w-full border-none bg-transparent py-2.5 pl-2 text-xs font-bold uppercase tracking-wide text-gray-700 placeholder-gray-400 focus:ring-0" 
+                            placeholder="Buscar por CNJ, advogado..." 
+                        />
                     </div>
                 </div>
             </div>
