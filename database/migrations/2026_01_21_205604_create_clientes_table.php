@@ -18,6 +18,7 @@ return new class extends Migration {
             $table->string('telefone');
             $table->text('endereco')->nullable();
             $table->timestamps(); // Cria created_at e updated_at
+            $table->softDeletes();
         });
     }
 

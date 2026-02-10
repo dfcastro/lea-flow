@@ -17,6 +17,8 @@ return new class extends Migration {
             $table->string('acao'); // Ex: "Mudou status"
             $table->string('descricao')->nullable(); // Ex: "De Inicial para Sentença"
             $table->timestamps();
+            // Na migration create_processos_table
+            $table->boolean('is_urgente')->default(false);
         });
     }
 

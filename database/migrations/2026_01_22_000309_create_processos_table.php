@@ -12,17 +12,30 @@ return new class extends Migration {
     {
         Schema::create('processos', function (Blueprint $table) {
             $table->id();
-            $table->string('numero_processo')->unique(); // Padrão CNJ: 0000000-00.0000.0.00.0000
+            $table->string('numero_processo')->unique();
             $table->foreignId('cliente_id')->constrained('clientes')->onDelete('cascade');
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade'); // Advogado responsável
-            $table->string('titulo'); // Ex: Ação De Indenização
-            $table->string('tribunal')->nullable(); // Ex: TJMG, TRT3
-            $table->string('vara')->nullable(); // Ex: 2ª Vara Cível
+
+            // MUDANÇA 1: Proteção do Advogado
+            // Tornamos nullable e mudamos para 'set null'. 
+            // Se o advogado for apagado, o processo continua a existir, mas sem dono.
+            $table->foreignId('user_id')
+                ->nullable()
+                ->constrained('users')
+                ->onDelete('set null');
+
+            $table->string('titulo');
+            $table->string('tribunal')->nullable();
+            $table->string('vara')->nullable();
             $table->string('status')->default('Petição Inicial');
             $table->decimal('valor_causa', 15, 2)->nullable();
             $table->text('observacoes')->nullable();
+
             $table->timestamps();
+
+            // MUDANÇA 2: Adicionar Soft Deletes
+            $table->softDeletes();
         });
+
     }
 
     /**

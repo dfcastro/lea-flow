@@ -6,10 +6,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Casts\Attribute; // <--- Importante para a nova sintaxe
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    // /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
     /**
@@ -25,10 +26,7 @@ class User extends Authenticatable
         'role',
         'cargo',
     ];
-    public function setNameAttribute($value)
-    {
-        $this->attributes['name'] = mb_convert_case(mb_strtolower($value, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
-    }
+
     /**
      * The attributes that should be hidden for serialization.
      *
@@ -50,5 +48,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    // --- MUTATOR MODERNO ---
+    // Esta função controla como o 'name' é lido (get) e gravado (set)
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            // Ao gravar (set): converte para minúsculas e depois põe as iniciais maiúsculas
+            set: fn (string $value) => mb_convert_case(mb_strtolower($value, 'UTF-8'), MB_CASE_TITLE, 'UTF-8'),
+        );
     }
 }

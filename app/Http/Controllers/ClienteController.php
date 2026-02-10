@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use App\Http\Requests\StoreClienteRequest; // Importamos o nosso validador
 
 class ClienteController extends Controller
 {
@@ -19,25 +20,20 @@ class ClienteController extends Controller
                 ->orWhere('cpf_cnpj', 'like', "%{$search}%");
         })
             ->latest()
-            ->paginate(10) // Divide em páginas de 10
-            ->withQueryString(); // Mantém o filtro na URL ao mudar de página
+            ->paginate(10)
+            ->withQueryString();
 
         return view('clientes.index', compact('clientes'));
     }
-    // Salvar novo cliente
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'nome' => 'required|max:255',
-            'cpf_cnpj' => 'required|unique:clientes',
-            'telefone' => 'required',
-            'email' => 'nullable|email',
-            'endereco' => 'nullable',
-        ]);
 
-        Cliente::create($validated);
+    // Salvar novo cliente
+    public function store(StoreClienteRequest $request) // Agora usamos StoreClienteRequest em vez de Request
+    {
+        // O Laravel valida tudo AUTOMATICAMENTE antes de chegar aqui.
+        // Se falhar, ele devolve o utilizador para trás com os erros.
+
+        Cliente::create($request->validated());
 
         return redirect()->route('clientes.index')->with('success', 'Cliente cadastrado!');
     }
 }
-
