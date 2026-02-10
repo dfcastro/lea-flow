@@ -186,7 +186,6 @@ with(fn() => [
 ?>
 
 <div> 
-
     <div class="space-y-8 text-left animate-fadeIn font-sans relative">
 
         @if (session()->has('message'))
@@ -199,6 +198,7 @@ with(fn() => [
             </div>
         @endif
 
+        {{-- FORMULÁRIO --}}
         <div class="bg-white rounded-2xl shadow-sm border {{ $isEditing ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-gray-100' }} transition-all duration-500"
             wire:key="form-proc-{{ $formId }}">
             <div class="p-8">
@@ -269,31 +269,39 @@ with(fn() => [
                     <div class="md:col-span-4"><x-input-label value="STATUS"
                             class="text-[10px] font-bold text-gray-400" /><select wire:model="status"
                             class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                            <optgroup label="🔵 INICIAL">
-                                <option>Distribuído</option>
-                                <option>Petição Inicial</option>
-                                <option>Aguardando Citação</option>
-                            </optgroup>
-                            <optgroup label="🟢 TRAMITAÇÃO">
-                                <option>Em Andamento</option>
-                                <option>Concluso para Decisão</option>
-                                <option>Instrução</option>
-                            </optgroup>
-                            <optgroup label="🟡 AGENDAMENTOS">
-                                <option>Audiência Designada</option>
-                                <option>Perícia Designada</option>
-                            </optgroup>
-                            <optgroup label="🔴 URGÊNCIA">
-                                <option>Prazo em Aberto</option>
-                                <option>Urgência / Liminar</option>
-                            </optgroup>
-                            <optgroup label="🟣 DECISÃO">
-                                <option>Sentenciado</option>
-                                <option>Acordo/Pagamento</option>
-                            </optgroup>
-                            <optgroup label="⚪ FINALIZADO">
-                                <option>Arquivado</option>
-                            </optgroup>
+                             <optgroup label="🔵 INICIAL">
+                                            <option>Distribuído</option>
+                                            <option>Petição Inicial</option>
+                                            <option>Aguardando Citação</option>
+                                        </optgroup>
+                                        <optgroup label="🟢 TRAMITAÇÃO">
+                                            <option>Em Andamento</option>
+                                            <option>Concluso para Decisão</option>
+                                            <option>Instrução</option>
+                                            <option>Contestação/Réplica</option>
+                                        </optgroup>
+                                        <optgroup label="🟡 AGENDAMENTOS">
+                                            <option>Audiência Designada</option>
+                                            <option>Aguardando Audiência</option>
+                                            <option>Perícia Designada</option>
+                                            <option>Apresentação de Laudo</option>
+                                        </optgroup>
+                                        <optgroup label="🔴 URGÊNCIA">
+                                            <option>Prazo em Aberto</option>
+                                            <option>Urgência / Liminar</option>
+                                            <option>Aguardando Protocolo</option>
+                                        </optgroup>
+                                        <optgroup label="🟣 DECISÃO">
+                                            <option>Sentenciado</option>
+                                            <option>Em Grau de Recurso</option>
+                                            <option>Cumprimento de Sentença</option>
+                                            <option>Acordo/Pagamento</option>
+                                        </optgroup>
+                                        <optgroup label="⚪ FINALIZADO">
+                                            <option>Trânsito em Julgado</option>
+                                            <option>Suspenso / Sobrestado</option>
+                                            <option>Arquivado</option>
+                                        </optgroup>
                         </select><x-input-error :messages="$errors->get('status')" class="mt-1" /></div>
                     <div class="md:col-span-3"><x-input-label value="PRAZO"
                             class="text-[10px] font-bold text-rose-500" /><x-text-input wire:model="data_prazo" type="date"
@@ -315,6 +323,7 @@ with(fn() => [
             </div>
         </div>
 
+        {{-- LISTAGEM --}}
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden text-left mt-8">
 
             <div class="px-6 py-5 border-b border-gray-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -480,257 +489,263 @@ with(fn() => [
 
     </div>
 
+    {{-- MODAL COM EFEITO BLACKOUT TOTAL USANDO TELEPORT --}}
     @if($drawerOpen && $activeProcess)
-        <div class="fixed inset-0 z-[9999] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            
-            <div class="fixed inset-0 bg-gray-950 bg-opacity-90 transition-opacity backdrop-blur-sm" wire:click="closeDrawer"></div>
-
-            <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+        @teleport('body')
+            <div class="fixed inset-0 z-[99999]" role="dialog" aria-modal="true" style="z-index: 99999;">
                 
-                <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-white/10">
+                {{-- BLACKOUT: Fundo escuro cobrindo toda a tela (com estilo inline para garantir) --}}
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm" 
+                     style="background-color: rgba(17, 24, 39, 0.85); position: fixed; top: 0; left: 0; width: 100%; height: 100%;"
+                     wire:click="closeDrawer"></div>
 
-                    <div class="bg-slate-900 relative overflow-hidden shrink-0">
-                        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-[100px] opacity-30 -mr-20 -mt-20 pointer-events-none"></div>
-                        <div class="absolute bottom-0 left-0 w-40 h-40 bg-cyan-500 rounded-full blur-[80px] opacity-20 -ml-10 -mb-10 pointer-events-none"></div>
+                <div class="fixed inset-0 z-[99999] overflow-y-auto" style="z-index: 99999;">
+                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                        
+                        {{-- Conteúdo do Modal --}}
+                        <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-white/10 z-[100000]">
 
-                        <div class="relative z-10 px-8 py-6">
-                            <div class="flex justify-between items-start mb-6">
-                                <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg {{ $activeProcess->cor }}">
-                                    {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
-                                </span>
-                                
-                                <button wire:click="closeDrawer" class="text-slate-400 hover:text-white transition bg-white/5 hover:bg-white/20 p-2 rounded-full backdrop-blur-md">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-                                </button>
-                            </div>
+                            <div class="bg-slate-900 relative overflow-hidden shrink-0">
+                                <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-[100px] opacity-30 -mr-20 -mt-20 pointer-events-none"></div>
+                                <div class="absolute bottom-0 left-0 w-40 h-40 bg-cyan-500 rounded-full blur-[80px] opacity-20 -ml-10 -mb-10 pointer-events-none"></div>
 
-                            <h2 class="text-2xl md:text-3xl font-black text-white uppercase tracking-tight leading-tight mb-8 drop-shadow-lg">
-                                {{ $activeProcess->titulo }}
-                            </h2>
-
-                            <div x-data="{ copied: false }">
-                                <button 
-                                    @click="navigator.clipboard.writeText('{{ $activeProcess->numero_processo }}'); copied = true; setTimeout(() => copied = false, 2000)"
-                                    class="group relative w-full sm:w-auto flex items-center justify-between gap-6 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 rounded-2xl px-6 py-5 transition-all duration-300 shadow-xl overflow-hidden ring-1 ring-white/5">
-                                    
-                                    <div class="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 transform translate-x-[-100%] group-hover:translate-x-[100%]"></div>
-
-                                    <div class="flex flex-col items-start text-left relative z-10">
-                                        <div class="flex items-center gap-2 mb-1.5">
-                                            <svg class="w-3 h-3 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
-                                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.25em]">CNJ / Identificador</span>
-                                        </div>
-                                        
-                                        <span class="font-mono text-xl sm:text-3xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-slate-300 group-hover:from-cyan-300 group-hover:to-indigo-300 transition-all duration-300 drop-shadow-sm">
-                                            {{ $activeProcess->numero_processo }}
-                                        </span>
-                                    </div>
-
-                                    <div class="relative z-10 flex flex-col items-center justify-center pl-6 border-l border-white/10 h-full">
-                                        <div class="p-2 rounded-lg bg-white/5 group-hover:bg-cyan-500 group-hover:text-white text-slate-400 transition-all duration-300">
-                                            <svg x-show="!copied" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                            </svg>
-                                            <svg x-show="copied" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                        <span x-show="!copied" class="text-[8px] font-bold uppercase tracking-wider text-slate-500 mt-1 group-hover:text-cyan-300 transition-colors">Copiar</span>
-                                        <span x-show="copied" x-cloak class="text-[8px] font-bold uppercase tracking-wider text-emerald-400 mt-1 animate-pulse">Copiado</span>
-                                    </div>
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-
-                    <div class="p-8 bg-slate-50 space-y-8">
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-indigo-200 transition">
-                                <div class="w-12 h-12 shrink-0 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-black border-2 border-indigo-100">
-                                    {{ substr($activeProcess->cliente->nome, 0, 1) }}
-                                </div>
-                                <div class="overflow-hidden">
-                                    <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Cliente</span>
-                                    <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->cliente->nome }}">
-                                        {{ $activeProcess->cliente->nome }}
-                                    </h3>
-                                </div>
-                            </div>
-
-                            <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-slate-300 transition">
-                                <div class="w-12 h-12 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black border-2 border-slate-200">
-                                    {{ substr($activeProcess->advogado->name ?? '?', 0, 1) }}
-                                </div>
-                                <div class="overflow-hidden">
-                                    <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Responsável</span>
-                                    <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->advogado->name ?? 'Sem Advogado' }}">
-                                        {{ $activeProcess->advogado->name ?? 'Não atribuído' }}
-                                    </h3>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                            <div class="col-span-2 sm:col-span-1 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 flex flex-col justify-center">
-                                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor da Causa</span>
-                                <div class="text-lg font-black text-emerald-900">
-                                    R$ {{ number_format($activeProcess->valor_causa, 2, ',', '.') }}
-                                </div>
-                            </div>
-                            
-                            <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tribunal</span>
-                                <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->tribunal }}">
-                                    {{ $activeProcess->tribunal }}
-                                </div>
-                            </div>
-
-                            <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Vara</span>
-                                <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->vara }}">
-                                    {{ $activeProcess->vara }}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                            <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                                <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest">Controle de Fase</h4>
-                                @if($activeProcess->data_prazo)
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-100 text-[10px] font-bold text-rose-600 uppercase">
-                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                        Vence {{ $activeProcess->data_prazo->format('d/m') }}
-                                    </span>
-                                @endif
-                            </div>
-                            <div class="p-5">
-                                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-2">Atualizar Status</label>
-                                <div class="relative">
-                                    <select wire:change="updateStatus($event.target.value)"
-                                        class="w-full appearance-none bg-none rounded-xl border-slate-200 text-sm font-bold text-slate-700 uppercase focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 py-3 pl-4 pr-10 bg-slate-50 hover:bg-white transition cursor-pointer shadow-sm">
-                                        
-                                        <option value="{{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}" selected>
+                                <div class="relative z-10 px-8 py-6">
+                                    <div class="flex justify-between items-start mb-6">
+                                        <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg {{ $activeProcess->cor }}">
                                             {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
-                                        </option>
+                                        </span>
                                         
-                                        <optgroup label="🔵 INICIAL">
-                                            <option>Distribuído</option>
-                                            <option>Petição Inicial</option>
-                                            <option>Aguardando Citação</option>
-                                        </optgroup>
-                                        <optgroup label="🟢 TRAMITAÇÃO">
-                                            <option>Em Andamento</option>
-                                            <option>Concluso para Decisão</option>
-                                            <option>Instrução</option>
-                                            <option>Contestação/Réplica</option>
-                                        </optgroup>
-                                        <optgroup label="🟡 AGENDAMENTOS">
-                                            <option>Audiência Designada</option>
-                                            <option>Aguardando Audiência</option>
-                                            <option>Perícia Designada</option>
-                                            <option>Apresentação de Laudo</option>
-                                        </optgroup>
-                                        <optgroup label="🔴 URGÊNCIA">
-                                            <option>Prazo em Aberto</option>
-                                            <option>Urgência / Liminar</option>
-                                            <option>Aguardando Protocolo</option>
-                                        </optgroup>
-                                        <optgroup label="🟣 DECISÃO">
-                                            <option>Sentenciado</option>
-                                            <option>Em Grau de Recurso</option>
-                                            <option>Cumprimento de Sentença</option>
-                                            <option>Acordo/Pagamento</option>
-                                        </optgroup>
-                                        <optgroup label="⚪ FINALIZADO">
-                                            <option>Trânsito em Julgado</option>
-                                            <option>Suspenso / Sobrestado</option>
-                                            <option>Arquivado</option>
-                                        </optgroup>
-                                    </select>
-                                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                                        <button wire:click="closeDrawer" class="text-slate-400 hover:text-white transition bg-white/5 hover:bg-white/20 p-2 rounded-full backdrop-blur-md">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                        </button>
+                                    </div>
+
+                                    <h2 class="text-2xl md:text-3xl font-black text-white uppercase tracking-tight leading-tight mb-8 drop-shadow-lg">
+                                        {{ $activeProcess->titulo }}
+                                    </h2>
+
+                                    <div x-data="{ copied: false }">
+                                        <button 
+                                            @click="navigator.clipboard.writeText('{{ $activeProcess->numero_processo }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                            class="group relative w-full sm:w-auto flex items-center justify-between gap-6 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 rounded-2xl px-6 py-5 transition-all duration-300 shadow-xl overflow-hidden ring-1 ring-white/5">
+                                            
+                                            <div class="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 transform translate-x-[-100%] group-hover:translate-x-[100%]"></div>
+
+                                            <div class="flex flex-col items-start text-left relative z-10">
+                                                <div class="flex items-center gap-2 mb-1.5">
+                                                    <svg class="w-3 h-3 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
+                                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.25em]">CNJ / Identificador</span>
+                                                </div>
+                                                
+                                                <span class="font-mono text-xl sm:text-3xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-slate-300 group-hover:from-cyan-300 group-hover:to-indigo-300 transition-all duration-300 drop-shadow-sm">
+                                                    {{ $activeProcess->numero_processo }}
+                                                </span>
+                                            </div>
+
+                                            <div class="relative z-10 flex flex-col items-center justify-center pl-6 border-l border-white/10 h-full">
+                                                <div class="p-2 rounded-lg bg-white/5 group-hover:bg-cyan-500 group-hover:text-white text-slate-400 transition-all duration-300">
+                                                    <svg x-show="!copied" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                    <svg x-show="copied" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </div>
+                                                <span x-show="!copied" class="text-[8px] font-bold uppercase tracking-wider text-slate-500 mt-1 group-hover:text-cyan-300 transition-colors">Copiar</span>
+                                                <span x-show="copied" x-cloak class="text-[8px] font-bold uppercase tracking-wider text-emerald-400 mt-1 animate-pulse">Copiado</span>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            <div class="p-8 bg-slate-50 space-y-8">
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-indigo-200 transition">
+                                        <div class="w-12 h-12 shrink-0 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-black border-2 border-indigo-100">
+                                            {{ substr($activeProcess->cliente->nome, 0, 1) }}
+                                        </div>
+                                        <div class="overflow-hidden">
+                                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Cliente</span>
+                                            <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->cliente->nome }}">
+                                                {{ $activeProcess->cliente->nome }}
+                                            </h3>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-slate-300 transition">
+                                        <div class="w-12 h-12 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black border-2 border-slate-200">
+                                            {{ substr($activeProcess->advogado->name ?? '?', 0, 1) }}
+                                        </div>
+                                        <div class="overflow-hidden">
+                                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Responsável</span>
+                                            <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->advogado->name ?? 'Sem Advogado' }}">
+                                                {{ $activeProcess->advogado->name ?? 'Não atribuído' }}
+                                            </h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div class="space-y-8">
-                            <div>
-                                <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Notas Internas
-                                </h4>
-                                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900/80 font-medium leading-relaxed italic">
-                                    @if($activeProcess->observacoes)
-                                        "{{ $activeProcess->observacoes }}"
-                                    @else
-                                        <span class="text-amber-900/40 not-italic">Sem observações registradas.</span>
-                                    @endif
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    <div class="col-span-2 sm:col-span-1 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 flex flex-col justify-center">
+                                        <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor da Causa</span>
+                                        <div class="text-lg font-black text-emerald-900">
+                                            R$ {{ number_format($activeProcess->valor_causa, 2, ',', '.') }}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
+                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tribunal</span>
+                                        <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->tribunal }}">
+                                            {{ $activeProcess->tribunal }}
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
+                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Vara</span>
+                                        <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->vara }}">
+                                            {{ $activeProcess->vara }}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div>
-                                <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    Linha do Tempo
-                                </h4>
-                                
-                                <div class="relative pl-2 space-y-6 before:content-[''] before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
-                                    @foreach($activeProcess->historico as $hist)
-                                        <div class="relative flex gap-4 group">
-                                            
-                                            @if($hist->acao === 'Criação')
-                                                <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-emerald-100 text-emerald-500 flex items-center justify-center group-hover:border-emerald-500 group-hover:scale-110 transition-all shadow-sm">
-                                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                                    </svg>
-                                                </div>
-                                            @else
-                                                <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-indigo-100 text-indigo-500 flex items-center justify-center group-hover:border-indigo-500 group-hover:scale-110 transition-all shadow-sm">
-                                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                    </svg>
-                                                </div>
-                                            @endif
-                                            
-                                            <div class="flex-1 pb-2">
-                                                <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
-                                                    <p class="text-xs font-bold text-slate-800 uppercase tracking-tight">{{ $hist->acao }}</p>
-                                                    <span class="text-[10px] font-bold text-slate-400 tabular-nums">
-                                                        {{ $hist->created_at->format('d/m/Y H:i') }}
-                                                    </span>
-                                                </div>
-                                                <p class="text-xs text-slate-500 mt-1 leading-snug">{{ $hist->descricao }}</p>
-                                                <p class="text-[9px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
-                                                    Por: {{ $hist->user->name ?? 'Sistema' }}
-                                                </p>
+                                <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                    <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                        <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest">Controle de Fase</h4>
+                                        @if($activeProcess->data_prazo)
+                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-100 text-[10px] font-bold text-rose-600 uppercase">
+                                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                Vence {{ $activeProcess->data_prazo->format('d/m') }}
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <div class="p-5">
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-2">Atualizar Status</label>
+                                        <div class="relative">
+                                            <select wire:change="updateStatus($event.target.value)"
+                                                class="w-full appearance-none bg-none rounded-xl border-slate-200 text-sm font-bold text-slate-700 uppercase focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 py-3 pl-4 pr-10 bg-slate-50 hover:bg-white transition cursor-pointer shadow-sm">
+                                                
+                                                <option value="{{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}" selected>
+                                                    {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
+                                                </option>
+                                                
+                                                <optgroup label="🔵 INICIAL">
+                                                    <option>Distribuído</option>
+                                                    <option>Petição Inicial</option>
+                                                    <option>Aguardando Citação</option>
+                                                </optgroup>
+                                                <optgroup label="🟢 TRAMITAÇÃO">
+                                                    <option>Em Andamento</option>
+                                                    <option>Concluso para Decisão</option>
+                                                    <option>Instrução</option>
+                                                    <option>Contestação/Réplica</option>
+                                                </optgroup>
+                                                <optgroup label="🟡 AGENDAMENTOS">
+                                                    <option>Audiência Designada</option>
+                                                    <option>Aguardando Audiência</option>
+                                                    <option>Perícia Designada</option>
+                                                    <option>Apresentação de Laudo</option>
+                                                </optgroup>
+                                                <optgroup label="🔴 URGÊNCIA">
+                                                    <option>Prazo em Aberto</option>
+                                                    <option>Urgência / Liminar</option>
+                                                    <option>Aguardando Protocolo</option>
+                                                </optgroup>
+                                                <optgroup label="🟣 DECISÃO">
+                                                    <option>Sentenciado</option>
+                                                    <option>Em Grau de Recurso</option>
+                                                    <option>Cumprimento de Sentença</option>
+                                                    <option>Acordo/Pagamento</option>
+                                                </optgroup>
+                                                <optgroup label="⚪ FINALIZADO">
+                                                    <option>Trânsito em Julgado</option>
+                                                    <option>Suspenso / Sobrestado</option>
+                                                    <option>Arquivado</option>
+                                                </optgroup>
+                                            </select>
+                                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                                             </div>
                                         </div>
-                                    @endforeach
+                                    </div>
                                 </div>
+
+                                <div class="space-y-8">
+                                    <div>
+                                        <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                            Notas Internas
+                                        </h4>
+                                        <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900/80 font-medium leading-relaxed italic">
+                                            @if($activeProcess->observacoes)
+                                                "{{ $activeProcess->observacoes }}"
+                                            @else
+                                                <span class="text-amber-900/40 not-italic">Sem observações registradas.</span>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            Linha do Tempo
+                                        </h4>
+                                        
+                                        <div class="relative pl-2 space-y-6 before:content-[''] before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
+                                            @foreach($activeProcess->historico as $hist)
+                                                <div class="relative flex gap-4 group">
+                                                    
+                                                    @if($hist->acao === 'Criação')
+                                                        <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-emerald-100 text-emerald-500 flex items-center justify-center group-hover:border-emerald-500 group-hover:scale-110 transition-all shadow-sm">
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                                            </svg>
+                                                        </div>
+                                                    @else
+                                                        <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-indigo-100 text-indigo-500 flex items-center justify-center group-hover:border-indigo-500 group-hover:scale-110 transition-all shadow-sm">
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                            </svg>
+                                                        </div>
+                                                    @endif
+                                                    
+                                                    <div class="flex-1 pb-2">
+                                                        <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
+                                                            <p class="text-xs font-bold text-slate-800 uppercase tracking-tight">{{ $hist->acao }}</p>
+                                                            <span class="text-[10px] font-bold text-slate-400 tabular-nums">
+                                                                {{ $hist->created_at->format('d/m/Y H:i') }}
+                                                            </span>
+                                                        </div>
+                                                        <p class="text-xs text-slate-500 mt-1 leading-snug">{{ $hist->descricao }}</p>
+                                                        <p class="text-[9px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
+                                                            Por: {{ $hist->user->name ?? 'Sistema' }}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="bg-white px-8 py-5 border-t border-slate-100 flex gap-4 shrink-0">
+                                <button wire:click="editar({{ $activeProcess->id }})"
+                                    class="flex-1 py-3 bg-white border-2 border-slate-200 rounded-xl text-xs font-black text-slate-700 uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition shadow-sm hover:shadow-md">
+                                    Editar Dados
+                                </button>
+                                <button onclick="confirm('Tem certeza que deseja excluir este processo? Isso não pode ser desfeito.') || event.stopImmediatePropagation()"
+                                    wire:click="excluir({{ $activeProcess->id }})"
+                                    class="flex-1 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl text-xs font-black text-rose-600 uppercase tracking-widest hover:bg-rose-100 hover:border-rose-200 transition shadow-sm hover:shadow-md">
+                                    Excluir
+                                </button>
                             </div>
                         </div>
-
-                    </div>
-
-                    <div class="bg-white px-8 py-5 border-t border-slate-100 flex gap-4 shrink-0">
-                        <button wire:click="editar({{ $activeProcess->id }})"
-                            class="flex-1 py-3 bg-white border-2 border-slate-200 rounded-xl text-xs font-black text-slate-700 uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition shadow-sm hover:shadow-md">
-                            Editar Dados
-                        </button>
-                        <button onclick="confirm('Tem certeza que deseja excluir este processo? Isso não pode ser desfeito.') || event.stopImmediatePropagation()"
-                            wire:click="excluir({{ $activeProcess->id }})"
-                            class="flex-1 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl text-xs font-black text-rose-600 uppercase tracking-widest hover:bg-rose-100 hover:border-rose-200 transition shadow-sm hover:shadow-md">
-                            Excluir
-                        </button>
                     </div>
                 </div>
             </div>
-        </div>
+        @endteleport
     @endif
-
 </div>
-
-
