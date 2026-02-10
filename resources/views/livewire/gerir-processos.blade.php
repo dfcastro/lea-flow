@@ -25,6 +25,8 @@ state([
     'data_prazo' => '',
     'valor_causa' => '',
     'observacoes' => '',
+    'is_urgent' => false,
+    
     'search' => '',
     'formId' => 1,
     'isEditing' => false,
@@ -82,7 +84,7 @@ $selecionarCliente = function ($id, $nome) {
 };
 
 $cancelar = function () {
-    $this->reset(['numero_processo', 'cliente_id', 'cliente_nome_search', 'user_id', 'titulo', 'tribunal', 'tribunal_outro', 'vara', 'vara_outro', 'status', 'data_prazo', 'valor_causa', 'observacoes', 'isEditing', 'editingId']);
+    $this->reset(['numero_processo', 'cliente_id', 'cliente_nome_search', 'user_id', 'titulo', 'tribunal', 'tribunal_outro', 'vara', 'vara_outro', 'status', 'data_prazo', 'valor_causa', 'observacoes', 'isEditing', 'editingId', 'is_urgent']);
     $this->status = 'Distribuído';
     $this->formId++;
     $this->drawerOpen = false;
@@ -120,6 +122,8 @@ $editar = function ($id) use ($tribunaisLista, $varasLista) {
         $this->data_prazo = $p->data_prazo ? $p->data_prazo->format('Y-m-d') : '';
         $this->valor_causa = number_format($p->valor_causa, 2, ',', '.');
         $this->observacoes = $p->observacoes;
+        $this->is_urgent = (boolean) $p->is_urgent;
+
         $this->formId++;
         $this->drawerOpen = false;
     }
@@ -140,6 +144,7 @@ $salvar = function () {
         'data_prazo' => $this->data_prazo ?: null,
         'valor_causa' => (float) $valorLimpo ?: 0,
         'observacoes' => $this->observacoes,
+        'is_urgent' => $this->is_urgent,
     ];
 
     if ($this->isEditing) {
@@ -171,12 +176,19 @@ with(fn() => [
                 ->orWhereHas('advogado', fn($q) => $q->where('name', 'like', "%{$this->search}%"));
         })
         ->when($this->filtroAtivo === 'meus', fn($q) => $q->where('user_id', Auth::id()))
-        ->when($this->filtroAtivo === 'urgentes', fn($q) => $q->whereIn('status', [
-            ProcessoStatus::URGENCIA_LIMINAR, 
-            ProcessoStatus::PRAZO_ABERTO, 
-            ProcessoStatus::AUDIENCIA_DESIGNADA
-        ]))
-        ->when($this->filtroAtivo === 'vencidos', fn($q) => $q->where('data_prazo', '<', now()))
+        
+        // --- FILTRO URGENTES ---
+        ->when($this->filtroAtivo === 'urgentes', function ($q) {
+            $q->where(function ($query) {
+                $query->where('is_urgent', true)
+                      ->orWhereIn('status', ['Urgência / Liminar', 'Prazo em Aberto']);
+            });
+        })
+
+        // --- FILTRO VENCIDOS ---
+        // (Alterei para startOfDay() para ser consistente com o visual: venceu ONTEM ou antes)
+        ->when($this->filtroAtivo === 'vencidos', fn($q) => $q->where('data_prazo', '<', now()->startOfDay()))
+        
         ->latest()->paginate(10),
     'resultadosClientes' => Cliente::where('nome', 'like', "%{$this->cliente_nome_search}%")->limit(5)->get(),
     'listaAdvogados' => User::where('cargo', 'Advogado')->orderBy('name')->get(),
@@ -312,6 +324,25 @@ with(fn() => [
                             class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold"
                             x-mask:dynamic="$money($input, ',', '.', 2)" /><x-input-error
                             :messages="$errors->get('valor_causa')" class="mt-1" /></div>
+                    
+                    {{-- CHECKBOX SIMPLES DE URGÊNCIA (Mais robusto) --}}
+                    <div class="md:col-span-6 flex items-end justify-start pb-4">
+                        <label class="flex items-center gap-3 cursor-pointer p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors bg-white shadow-sm w-full">
+                            <input type="checkbox" 
+                                wire:model="is_urgent" 
+                                class="w-5 h-5 text-rose-600 rounded border-gray-300 focus:ring-rose-500 shadow-sm cursor-pointer">
+                            
+                            <div class="flex flex-col">
+                                <span class="text-xs font-black text-gray-700 uppercase tracking-widest">
+                                    Urgente / Prioritário
+                                </span>
+                                <span class="text-[10px] text-gray-400 font-medium">
+                                    Destaca este processo na lista com um ícone de alerta
+                                </span>
+                            </div>
+                        </label>
+                    </div>
+
                     <div class="md:col-span-6 flex items-end"><button type="submit"
                             class="w-full py-4 bg-gray-900 text-white rounded-xl font-black shadow-xl hover:bg-indigo-600 transition-all uppercase text-xs tracking-widest">{{ $isEditing ? 'Salvar' : 'Cadastrar' }}</button>
                     </div>
@@ -340,6 +371,11 @@ with(fn() => [
                     <button wire:click="mudarFiltro('urgentes')"
                         class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'urgentes' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500 hover:text-rose-600' }}">
                         Urgentes
+                    </button>
+                    {{-- BOTÃO NOVO: VENCIDOS --}}
+                    <button wire:click="mudarFiltro('vencidos')"
+                        class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'vencidos' ? 'bg-white text-rose-700 shadow-sm' : 'text-gray-500 hover:text-rose-700' }}">
+                        Vencidos
                     </button>
                 </div>
 
@@ -382,9 +418,16 @@ with(fn() => [
                                 
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex flex-col">
-                                        <span class="text-sm font-bold text-gray-900 truncate max-w-[200px]" title="{{ $proc->titulo }}">
-                                            {{ $proc->titulo }}
-                                        </span>
+                                        <div class="flex items-center gap-2">
+                                            @if($proc->is_urgent)
+                                                <span class="flex-shrink-0 text-rose-500" title="Processo Urgente">
+                                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"></path></svg>
+                                                </span>
+                                            @endif
+                                            <span class="text-sm font-bold text-gray-900 truncate max-w-[200px]" title="{{ $proc->titulo }}">
+                                                {{ $proc->titulo }}
+                                            </span>
+                                        </div>
                                         <div class="flex items-center gap-1.5 mt-1">
                                             <svg class="w-3 h-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -515,9 +558,17 @@ with(fn() => [
 
                                 <div class="relative z-10 px-8 py-6">
                                     <div class="flex justify-between items-start mb-6">
-                                        <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg {{ $activeProcess->cor }}">
-                                            {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
-                                        </span>
+                                        <div class="flex items-center gap-3">
+                                            <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg {{ $activeProcess->cor }}">
+                                                {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
+                                            </span>
+                                            @if($activeProcess->is_urgent)
+                                                <span class="px-3 py-1 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase tracking-widest border border-rose-400 shadow-lg flex items-center gap-1">
+                                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"></path></svg>
+                                                    URGENTE
+                                                </span>
+                                            @endif
+                                        </div>
                                         
                                         <button wire:click="closeDrawer" class="text-slate-400 hover:text-white transition bg-white/5 hover:bg-white/20 p-2 rounded-full backdrop-blur-md">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>

@@ -3,15 +3,16 @@
 namespace App\Models;
 
 use App\Enums\ProcessoStatus;
-use App\Models\Cliente; // Importação explicita é boa prática
+use App\Models\Cliente;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute; // Para os novos mutators
-use Illuminate\Database\Eloquent\SoftDeletes; // <--- Importar
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Processo extends Model
 {
     use SoftDeletes;
+
     protected $fillable = [
         'numero_processo',
         'cliente_id',
@@ -22,13 +23,15 @@ class Processo extends Model
         'status',
         'data_prazo',
         'valor_causa',
-        'observacoes'
+        'observacoes',
+        'is_urgent' // <--- ADICIONADO AQUI
     ];
 
     protected $casts = [
         'data_prazo' => 'date',
         'valor_causa' => 'decimal:2',
-        'status' => ProcessoStatus::class, // O segredo está aqui! O Laravel converte sozinho.
+        'status' => ProcessoStatus::class,
+        'is_urgent' => 'boolean', // <--- ADICIONADO AQUI
     ];
 
     // --- RELACIONAMENTOS ---
@@ -50,7 +53,6 @@ class Processo extends Model
 
     // --- MUTATORS (Sintaxe Moderna Laravel 9+) ---
 
-    // Converte automaticamente para Title Case ao salvar
     protected function titulo(): Attribute
     {
         return Attribute::make(
@@ -74,7 +76,6 @@ class Processo extends Model
 
     // --- ACESSORS PERSONALIZADOS ---
 
-    // Recupera a cor diretamente do Enum
     public function getCorAttribute()
     {
         return $this->status?->color() ?? 'bg-gray-50 text-gray-400 border-gray-100';
