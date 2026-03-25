@@ -11,9 +11,15 @@ use function Livewire\Volt\{state, with, usesPagination};
 usesPagination();
 
 state([
-    // FORMULÁRIO
+    // VISÃO E FILTROS
+    'viewMode' => 'kanban', // 'kanban' ou 'table'
+    'filtroAtivo' => 'todos',
+    'search' => '',
+    'ocultarArquivados' => true,
+
+    // FORMULÁRIO DE CADASTRO/EDIÇÃO
     'numero_processo' => '',
-    'cliente_id' => '',
+    'cliente_id' => null,
     'cliente_nome_search' => '',
     'user_id' => '',
     'titulo' => '',
@@ -26,27 +32,67 @@ state([
     'valor_causa' => '',
     'observacoes' => '',
     'is_urgent' => false,
-    
-    'search' => '',
+
+    // CONTROLES DE ESTADO
     'formId' => 1,
     'isEditing' => false,
     'editingId' => null,
-
-    // MODAL & FILTROS
     'drawerOpen' => false,
     'activeProcess' => null,
-    'filtroAtivo' => 'todos'
+    'showFormModal' => false,
 ]);
 
 $tribunaisLista = ['TRF1', 'TRF6', 'JEF', 'TJMG', 'TRT3', 'STJ', 'STF'];
 $varasLista = ['VARA PREVIDENCIÁRIA', 'JUIZADO ESPECIAL FEDERAL', 'VARA CÍVEL', 'VARA FEDERAL CÍVEL', 'VARA ÚNICA', 'VARA DO TRABALHO'];
 
-// --- FUNÇÕES DO MODAL & HISTÓRICO ---
+// --- MAPA DO KANBAN ---
+$macroFases = [
+    'INICIAL' => ['Distribuído', 'Petição Inicial', 'Aguardando Citação'],
+    'TRAMITAÇÃO' => ['Em Andamento', 'Concluso para Decisão', 'Instrução', 'Contestação/Réplica'],
+    'AGENDAMENTOS' => ['Audiência Designada', 'Aguardando Audiência', 'Perícia Designada', 'Apresentação de Laudo'],
+    'URGÊNCIA' => ['Prazo em Aberto', 'Urgência / Liminar', 'Aguardando Protocolo'],
+    'DECISÃO' => ['Sentenciado', 'Em Grau de Recurso', 'Cumprimento de Sentença', 'Acordo/Pagamento'],
+    'FINALIZADO' => ['Trânsito em Julgado', 'Suspenso / Sobrestado', 'Arquivado'],
+];
+
+$toggleView = function ($mode) {
+    $this->viewMode = $mode;
+};
+
+$mudarFiltro = function ($filtro) {
+    $this->filtroAtivo = $filtro;
+    $this->resetPage();
+};
+
+$toggleArquivados = function () {
+    $this->ocultarArquivados = !$this->ocultarArquivados;
+};
+
+// --- FUNÇÕES DO KANBAN (DRAG & DROP) ---
+$moverProcesso = function ($processoId, $novaColuna) use ($macroFases) {
+    $p = Processo::find($processoId);
+    if ($p) {
+        $novoStatus = $macroFases[$novaColuna][0] ?? 'Em Andamento';
+        $statusAtual = $p->status instanceof \App\Enums\ProcessoStatus ? $p->status->value : $p->status;
+
+        if ($statusAtual !== $novoStatus) {
+            $p->update(['status' => $novoStatus]);
+            ProcessoHistorico::create([
+                'processo_id' => $p->id,
+                'user_id' => Auth::id(),
+                'acao' => 'Movimentação Kanban',
+                'descricao' => "Arrastado para a fase {$novaColuna} (Status alterado para: {$novoStatus})"
+            ]);
+            $this->dispatch('notificacao', ['msg' => 'Processo movido para ' . $novaColuna]);
+        }
+    }
+};
+
+// --- FUNÇÕES DO MODAL (VISUALIZAR) ---
 $openDrawer = function ($id) {
     $this->activeProcess = Processo::with(['cliente', 'advogado', 'historico.user'])->find($id);
     $this->drawerOpen = true;
 };
-
 $closeDrawer = function () {
     $this->drawerOpen = false;
     $this->activeProcess = null;
@@ -59,35 +105,34 @@ $updateStatus = function ($novoStatus) {
 
         if ($statusAntigoString !== $novoStatus) {
             $this->activeProcess->update(['status' => $novoStatus]);
-
             ProcessoHistorico::create([
                 'processo_id' => $this->activeProcess->id,
                 'user_id' => Auth::id(),
                 'acao' => 'Alteração de Fase',
                 'descricao' => "Alterou de '{$statusAntigoString}' para '{$novoStatus}'"
             ]);
-
             $this->activeProcess->refresh();
             session()->flash('message', 'STATUS ATUALIZADO!');
         }
     }
 };
 
-$mudarFiltro = function ($filtro) {
-    $this->filtroAtivo = $filtro;
-    $this->resetPage();
+// --- FUNÇÕES DE FORMULÁRIO (CRIAR/EDITAR) ---
+$abrirForm = function () {
+    $this->reset(['numero_processo', 'cliente_id', 'cliente_nome_search', 'user_id', 'titulo', 'tribunal', 'tribunal_outro', 'vara', 'vara_outro', 'data_prazo', 'valor_causa', 'observacoes', 'isEditing', 'editingId']);
+    $this->status = 'Distribuído';
+    $this->is_urgent = false;
+    $this->showFormModal = true;
+};
+
+$cancelarForm = function () {
+    $this->showFormModal = false;
+    $this->formId++;
 };
 
 $selecionarCliente = function ($id, $nome) {
     $this->cliente_id = $id;
     $this->cliente_nome_search = $nome;
-};
-
-$cancelar = function () {
-    $this->reset(['numero_processo', 'cliente_id', 'cliente_nome_search', 'user_id', 'titulo', 'tribunal', 'tribunal_outro', 'vara', 'vara_outro', 'status', 'data_prazo', 'valor_causa', 'observacoes', 'isEditing', 'editingId', 'is_urgent']);
-    $this->status = 'Distribuído';
-    $this->formId++;
-    $this->drawerOpen = false;
 };
 
 $editar = function ($id) use ($tribunaisLista, $varasLista) {
@@ -118,14 +163,13 @@ $editar = function ($id) use ($tribunaisLista, $varasLista) {
         }
 
         $this->status = $p->status instanceof \App\Enums\ProcessoStatus ? $p->status->value : $p->status;
-        
         $this->data_prazo = $p->data_prazo ? $p->data_prazo->format('Y-m-d') : '';
         $this->valor_causa = number_format($p->valor_causa, 2, ',', '.');
         $this->observacoes = $p->observacoes;
-        $this->is_urgent = (boolean) $p->is_urgent;
+        $this->is_urgent = (bool) $p->is_urgent;
 
-        $this->formId++;
         $this->drawerOpen = false;
+        $this->showFormModal = true;
     }
 };
 
@@ -136,7 +180,7 @@ $salvar = function () {
     $dados = [
         'numero_processo' => $this->numero_processo,
         'cliente_id' => $this->cliente_id,
-        'user_id' => $this->user_id,
+        'user_id' => $this->user_id ?: null,
         'titulo' => $this->titulo,
         'tribunal' => ($this->tribunal === 'OUTROS') ? strtoupper(trim($this->tribunal_outro)) : $this->tribunal,
         'vara' => ($this->vara === 'OUTROS') ? strtoupper(trim($this->vara_outro)) : $this->vara,
@@ -144,12 +188,12 @@ $salvar = function () {
         'data_prazo' => $this->data_prazo ?: null,
         'valor_causa' => (float) $valorLimpo ?: 0,
         'observacoes' => $this->observacoes,
-        'is_urgent' => $this->is_urgent,
+        'is_urgent' => $this->is_urgent ? true : false,
     ];
 
     if ($this->isEditing) {
-        $proc = Processo::find($this->editingId);
-        $proc->update($dados);
+        Processo::find($this->editingId)->update($dados);
+        session()->flash('message', 'Processo atualizado com sucesso!');
     } else {
         $proc = Processo::create($dados);
         ProcessoHistorico::create([
@@ -158,647 +202,566 @@ $salvar = function () {
             'acao' => 'Criação',
             'descricao' => 'Processo cadastrado no sistema.'
         ]);
+        session()->flash('message', 'Processo criado com sucesso!');
     }
-    $this->cancelar();
+    $this->cancelarForm();
 };
 
 $excluir = function ($id) {
     Processo::find($id)?->delete();
     $this->drawerOpen = false;
+    session()->flash('message', 'Processo excluído.');
 };
 
-with(fn() => [
-    'processos' => Processo::with(['cliente', 'advogado'])
-        ->where(function ($query) {
-            $query->where('titulo', 'like', "%{$this->search}%")
+// --- CARREGAMENTO DE DADOS ---
+with(function () use ($macroFases, $tribunaisLista, $varasLista) {
+    $query = Processo::with(['cliente', 'advogado'])
+        ->where(function ($q) {
+            $q->where('titulo', 'like', "%{$this->search}%")
                 ->orWhere('numero_processo', 'like', "%{$this->search}%")
-                ->orWhereHas('cliente', fn($q) => $q->where('nome', 'like', "%{$this->search}%"))
-                ->orWhereHas('advogado', fn($q) => $q->where('name', 'like', "%{$this->search}%"));
+                ->orWhereHas('cliente', fn($q2) => $q2->where('nome', 'like', "%{$this->search}%"))
+                ->orWhereHas('advogado', fn($q2) => $q2->where('name', 'like', "%{$this->search}%"));
         })
         ->when($this->filtroAtivo === 'meus', fn($q) => $q->where('user_id', Auth::id()))
-        
-        // --- FILTRO URGENTES ---
         ->when($this->filtroAtivo === 'urgentes', function ($q) {
             $q->where(function ($query) {
                 $query->where('is_urgent', true)
-                      ->orWhereIn('status', ['Urgência / Liminar', 'Prazo em Aberto']);
+                    ->orWhereIn('status', ['Urgência / Liminar', 'Prazo em Aberto']);
             });
         })
-
-        // --- FILTRO VENCIDOS ---
-        // (Alterei para startOfDay() para ser consistente com o visual: venceu ONTEM ou antes)
         ->when($this->filtroAtivo === 'vencidos', fn($q) => $q->where('data_prazo', '<', now()->startOfDay()))
-        
-        ->latest()->paginate(10),
-    'resultadosClientes' => Cliente::where('nome', 'like', "%{$this->cliente_nome_search}%")->limit(5)->get(),
-    'listaAdvogados' => User::where('cargo', 'Advogado')->orderBy('name')->get(),
-    'tribunais' => $tribunaisLista,
-    'varas' => $varasLista
-]);
+        ->when($this->ocultarArquivados, fn($q) => $q->where('status', '!=', 'Arquivado'));
+
+    $kanbanBoard = [];
+    foreach (array_keys($macroFases) as $coluna) {
+        $kanbanBoard[$coluna] = [];
+    }
+
+    $todosProcessos = (clone $query)->latest()->get();
+
+    foreach ($todosProcessos as $p) {
+        $statusStr = $p->status instanceof \App\Enums\ProcessoStatus ? $p->status->value : $p->status;
+        $colocador = 'INICIAL';
+
+        foreach ($macroFases as $macro => $listaStatus) {
+            if (in_array($statusStr, $listaStatus)) {
+                $colocador = $macro;
+                break;
+            }
+        }
+        $kanbanBoard[$colocador][] = $p;
+    }
+
+    return [
+        'processosPaginados' => $query->latest()->paginate(10),
+        'kanbanBoard' => $kanbanBoard,
+        'resultadosClientes' => Cliente::where('nome', 'like', "%{$this->cliente_nome_search}%")->limit(5)->get(),
+        'listaAdvogados' => User::where('cargo', 'Advogado')->orderBy('name')->get(),
+        'tribunaisLista' => $tribunaisLista,
+        'varasLista' => $varasLista,
+        'macroFases' => $macroFases
+    ];
+});
 ?>
 
-<div> 
-    <div class="space-y-8 text-left animate-fadeIn font-sans relative">
+<div class="min-h-screen bg-[#F8FAFC] p-4 sm:p-6 lg:p-8 font-sans antialiased text-slate-900">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
-        @if (session()->has('message'))
-            <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4000)"
-                class="fixed top-5 right-5 z-[200] flex items-center p-4 border-l-4 border-emerald-500 bg-white rounded-r-xl shadow-2xl animate-bounce-in">
-                <div class="text-emerald-500 mr-3"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                    </svg></div>
-                <div class="font-black text-emerald-800 uppercase tracking-widest text-[10px]">{{ session('message') }}</div>
+    <style>
+        .hide-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .kanban-board {
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+    </style>
+
+    @if (session()->has('message'))
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4000)"
+            class="fixed top-5 right-5 z-[999999] flex items-center p-4 border-l-4 border-emerald-500 bg-white rounded-md shadow-lg">
+            <svg class="w-5 h-5 text-emerald-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <div class="font-bold text-emerald-800 uppercase tracking-wider text-[11px]">{{ session('message') }}</div>
+        </div>
+    @endif
+
+    <div x-data="{ show: false, msg: '' }"
+        @notificacao.window="msg = $event.detail.msg; show = true; setTimeout(() => show = false, 3000)" x-show="show"
+        style="display: none;"
+        class="fixed bottom-5 right-5 z-[999999] bg-slate-900 text-white px-5 py-3 rounded-md shadow-lg flex items-center gap-3">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        <span class="text-[11px] font-bold uppercase tracking-wider" x-text="msg"></span>
+    </div>
+
+    <div style="background-color: white; border-radius: 16px; padding: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #E2E8F0;">
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #E2E8F0; padding-bottom: 1.25rem; margin-bottom: 2rem; flex-wrap: wrap; gap: 1.5rem;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <div style="width: 4px; height: 28px; background-color: #4F46E5; border-radius: 2px;"></div>
+                    <h1 style="font-size: 1.75rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.025em;">Processos</h1>
+                </div>
+                <p style="margin-top: 0.25rem; font-size: 0.875rem; color: #64748B; padding-left: 1rem;">Gestão e controle de fases processuais.</p>
             </div>
-        @endif
 
-        {{-- FORMULÁRIO --}}
-        <div class="bg-white rounded-2xl shadow-sm border {{ $isEditing ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-gray-100' }} transition-all duration-500"
-            wire:key="form-proc-{{ $formId }}">
-            <div class="p-8">
-                <div class="flex items-center justify-between mb-8">
-                    <div class="flex items-center gap-4">
-                        <div class="p-3 rounded-xl bg-gray-900 text-white shadow-lg"><svg class="w-6 h-6" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                                </path>
-                            </svg></div>
-                        <div>
-                            <h2 class="text-2xl font-black text-gray-900 tracking-tighter italic uppercase">
-                                {{ $isEditing ? 'Editar Processo' : 'Novo Processo' }}</h2>
-                            <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest text-left">L&A Flow •
-                                Dashboard Jurídica</p>
+            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 0.75rem; height: 38px; width: 260px; transition: border-color 0.2s;" onfocusin="this.style.borderColor='#4F46E5'" onfocusout="this.style.borderColor='#CBD5E1'">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: #94A3B8;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input wire:model.live.debounce.300ms="search" type="text" placeholder="Buscar CNJ, Cliente..."
+                        style="border: none; background: transparent; width: 100%; font-size: 0.875rem; color: #334155; outline: none; box-shadow: none; padding-left: 0.5rem;" />
+                </div>
+
+                <div style="display: flex; background: #F1F5F9; padding: 4px; border-radius: 6px; height: 38px; align-items: center;">
+                    <button wire:click="toggleView('kanban')" style="height: 100%; padding: 0 1rem; border-radius: 4px; border: none; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; transition: 0.2s; {{ $viewMode === 'kanban' ? 'background: white; color: #4F46E5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);' : 'background: transparent; color: #64748B;' }}">
+                        Board
+                    </button>
+                    <button wire:click="toggleView('table')" style="height: 100%; padding: 0 1rem; border-radius: 4px; border: none; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; transition: 0.2s; {{ $viewMode === 'table' ? 'background: white; color: #4F46E5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);' : 'background: transparent; color: #64748B;' }}">
+                        Lista
+                    </button>
+                </div>
+
+                <button wire:click="abrirForm" style="background-color: #0F172A; color: white; height: 38px; padding: 0 1.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#1E293B'" onmouseout="this.style.backgroundColor='#0F172A'">
+                    + Novo Processo
+                </button>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem;">
+            <button wire:click="mudarFiltro('todos')" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid {{ $filtroAtivo === 'todos' ? '#0F172A' : '#E2E8F0' }}; background: {{ $filtroAtivo === 'todos' ? '#0F172A' : '#F8FAFC' }}; color: {{ $filtroAtivo === 'todos' ? 'white' : '#64748B' }}; cursor: pointer; transition: 0.2s;">Todos</button>
+            <button wire:click="mudarFiltro('meus')" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid {{ $filtroAtivo === 'meus' ? '#C7D2FE' : '#E2E8F0' }}; background: {{ $filtroAtivo === 'meus' ? '#EEF2FF' : '#F8FAFC' }}; color: {{ $filtroAtivo === 'meus' ? '#4F46E5' : '#64748B' }}; cursor: pointer; transition: 0.2s;">Meus Processos</button>
+            <button wire:click="mudarFiltro('urgentes')" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid {{ $filtroAtivo === 'urgentes' ? '#FECDD3' : '#E2E8F0' }}; background: {{ $filtroAtivo === 'urgentes' ? '#FFF1F2' : '#F8FAFC' }}; color: {{ $filtroAtivo === 'urgentes' ? '#E11D48' : '#64748B' }}; cursor: pointer; transition: 0.2s;">Urgentes</button>
+            <button wire:click="mudarFiltro('vencidos')" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid {{ $filtroAtivo === 'vencidos' ? '#FDE68A' : '#E2E8F0' }}; background: {{ $filtroAtivo === 'vencidos' ? '#FEFCE8' : '#F8FAFC' }}; color: {{ $filtroAtivo === 'vencidos' ? '#B45309' : '#64748B' }}; cursor: pointer; transition: 0.2s;">Prazos Vencidos</button>
+
+            <div style="width: 1px; background: #E2E8F0; margin: 0 0.5rem;"></div>
+
+            <button wire:click="toggleArquivados" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid {{ $ocultarArquivados ? '#CBD5E1' : '#E2E8F0' }}; background: {{ $ocultarArquivados ? '#F1F5F9' : '#F8FAFC' }}; color: {{ $ocultarArquivados ? '#475569' : '#64748B' }}; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+                @if($ocultarArquivados)
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                    Arquivados Ocultos
+                @else
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    Mostrando Arquivados
+                @endif
+            </button>
+        </div>
+
+        <div>
+            @if($viewMode === 'kanban')
+
+                <div class="hide-scroll kanban-board" style="display: flex; gap: 0.75rem; width: 100%; overflow-x: auto; padding-bottom: 2rem; min-height: 65vh; align-items: flex-start;">
+
+                    @foreach($kanbanBoard as $colunaNome => $processosColuna)
+                        @php
+                            $corColuna = match ($colunaNome) {
+                                'INICIAL' => '#3B82F6',
+                                'TRAMITAÇÃO' => '#10B981',
+                                'AGENDAMENTOS' => '#F59E0B',
+                                'URGÊNCIA' => '#E11D48',
+                                'DECISÃO' => '#8B5CF6',
+                                'FINALIZADO' => '#64748B',
+                                default => '#CBD5E1'
+                            };
+                            $bgColuna = match ($colunaNome) {
+                                'INICIAL' => '#EFF6FF',
+                                'TRAMITAÇÃO' => '#ECFDF5',
+                                'AGENDAMENTOS' => '#FFFBEB',
+                                'URGÊNCIA' => '#FFF1F2',
+                                'DECISÃO' => '#FAF5FF',
+                                'FINALIZADO' => '#F8FAFC',
+                                default => '#F1F5F9'
+                            };
+                        @endphp
+
+                        <div style="flex: 1; min-width: 180px; max-width: 250px; background-color: {{ $bgColuna }}; border-radius: 6px; border: 1px solid #E2E8F0; border-top: 3px solid {{ $corColuna }}; display: flex; flex-direction: column; max-height: calc(100vh - 150px); cursor: default;">
+
+                            <div style="padding: 0.5rem 0.65rem; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.6); border-top-left-radius: 4px; border-top-right-radius: 4px;">
+                                <h3 style="font-size: 0.6rem; font-weight: 800; color: #0F172A; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">{{ $colunaNome }}</h3>
+                                <span style="background: white; border: 1px solid #E2E8F0; color: #64748B; font-size: 0.55rem; font-weight: 800; padding: 0.1rem 0.35rem; border-radius: 999px;">{{ count($processosColuna) }}</span>
+                            </div>
+
+                            <div data-coluna="{{ $colunaNome }}" class="hide-scroll" x-data x-init="Sortable.create($el, { group: 'kanban', animation: 150, ghostClass: 'opacity-50', onEnd: function(evt) { if(evt.to.dataset.coluna !== evt.from.dataset.coluna) { @this.call('moverProcesso', evt.item.dataset.id, evt.to.dataset.coluna); } } })" style="padding: 0.5rem; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 0.5rem; min-height: 100px;">
+
+                                @forelse($processosColuna as $proc)
+                                    @php $isVencido = $proc->data_prazo && $proc->data_prazo->startOfDay() < now()->startOfDay(); @endphp
+
+                                    <div data-id="{{ $proc->id }}" style="background: white; border-radius: 6px; padding: 0.65rem; border: 1px solid {{ $proc->is_urgent ? '#FECDD3' : '#E2E8F0' }}; box-shadow: 0 1px 2px {{ $proc->is_urgent ? 'rgba(225, 29, 72, 0.1)' : 'rgba(0,0,0,0.02)' }}; position: relative; cursor: grab; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.05)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 2px rgba(0,0,0,0.02)';">
+
+                                        @if($proc->is_urgent)
+                                            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #E11D48;"></div>
+                                        @else
+                                            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: {{ $corColuna }}; opacity: 0.5;"></div>
+                                        @endif
+
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem; padding-left: 2px;">
+                                            <span style="font-size: 0.45rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #4F46E5; background: #EEF2FF; padding: 0.15rem 0.25rem; border-radius: 4px; border: 1px solid #E0E7FF; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                {{ $proc->status instanceof \App\Enums\ProcessoStatus ? $proc->status->value : $proc->status }}
+                                            </span>
+                                            <button wire:click.stop="openDrawer({{ $proc->id }})" style="background: transparent; border: none; color: #94A3B8; cursor: pointer; padding: 0.1rem; border-radius: 4px; transition: 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9'; this.style.color='#0F172A';" onmouseout="this.style.backgroundColor='transparent'; this.style.color='#94A3B8';">
+                                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                            </button>
+                                        </div>
+
+                                        <h4 style="font-size: 0.7rem; font-weight: 700; color: #0F172A; line-height: 1.2; margin: 0 0 0.15rem 0; padding-left: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;" title="{{ $proc->titulo }}">
+                                            {{ $proc->titulo }}
+                                        </h4>
+                                        <div style="font-family: monospace; font-size: 0.55rem; color: #64748B; margin-bottom: 0.5rem; padding-left: 2px;">
+                                            {{ $proc->numero_processo }}
+                                        </div>
+
+                                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E2E8F0; padding-top: 0.4rem; margin-left: 2px;">
+                                            <div style="display: flex; align-items: center; gap: 0.3rem;" title="{{ $proc->cliente?->nome }}">
+                                                <div style="width: 16px; height: 16px; border-radius: 4px; background: #F8FAFC; border: 1px solid #E2E8F0; color: #475569; font-size: 0.45rem; font-weight: 800; display: flex; align-items: center; justify-content: center;">
+                                                    {{ substr($proc->cliente?->nome ?? '?', 0, 1) }}
+                                                </div>
+                                                <span style="font-size: 0.5rem; font-weight: 600; color: #475569; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $proc->cliente?->nome }}</span>
+                                            </div>
+
+                                            @if($proc->data_prazo)
+                                                <span style="font-size: 0.45rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.25rem; border-radius: 4px; {{ $isVencido ? 'color: #E11D48; background: #FFF1F2; border: 1px solid #FECDD3;' : 'color: #64748B; background: #F8FAFC;' }}">
+                                                    {{ $isVencido ? 'VENCIDO' : $proc->data_prazo->format('d/m') }}
+                                                </span>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                @empty
+                                    <div style="display: flex; flex-direction: column; items-center; justify-content: center; text-align: center; padding: 1.5rem 0; opacity: 0.5;">
+                                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: #94A3B8; margin: 0 auto 0.25rem auto;" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                        <span style="font-size: 0.5rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #64748B;">Arraste para cá</span>
+                                    </div>
+                                @endforelse
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+
+            @else
+                <div style="background: white; border-radius: 8px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #E2E8F0; background: #F8FAFC;">
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Processo</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Cliente / Local</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Responsável</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">Status</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Prazo</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($processosPaginados as $proc)
+                                    @php $isVencido = $proc->data_prazo && $proc->data_prazo->startOfDay() < now()->startOfDay(); @endphp
+                                    <tr style="border-bottom: 1px solid #F1F5F9; transition: background 0.2s; border-left: 3px solid {{ $proc->is_urgent ? '#E11D48' : 'transparent' }};" onmouseover="this.style.backgroundColor='#F8FAFC';" onmouseout="this.style.backgroundColor='transparent';">
+                                        <td style="padding: 1rem 1.5rem;">
+                                            <div style="font-size: 0.85rem; font-weight: 600; color: #0F172A; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $proc->titulo }}</div>
+                                            <div style="font-family: monospace; font-size: 0.75rem; color: #64748B; margin-top: 0.15rem;">{{ $proc->numero_processo }}</div>
+                                        </td>
+                                        <td style="padding: 1rem 1.5rem;">
+                                            <div style="font-size: 0.75rem; font-weight: 600; color: #0F172A;">{{ $proc->cliente?->nome }}</div>
+                                            <div style="font-size: 0.65rem; color: #64748B; margin-top: 0.15rem; text-transform: uppercase;">{{ $proc->tribunal }} • {{ $proc->vara }}</div>
+                                        </td>
+                                        <td style="padding: 1rem 1.5rem;">
+                                            <div style="font-size: 0.75rem; color: #475569;">{{ $proc->advogado->name ?? 'Não atribuído' }}</div>
+                                        </td>
+                                        <td style="padding: 1rem 1.5rem; text-align: center;">
+                                            <span style="font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: white; border: 1px solid #E2E8F0; color: #475569; padding: 0.25rem 0.6rem; border-radius: 6px;">
+                                                {{ $proc->status instanceof \App\Enums\ProcessoStatus ? $proc->status->value : $proc->status }}
+                                            </span>
+                                        </td>
+                                        <td style="padding: 1rem 1.5rem;">
+                                            @if($proc->data_prazo)
+                                                <span style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0.6rem; border-radius: 4px; {{ $isVencido ? 'color: #E11D48; background: #FFF1F2; border: 1px solid #FECDD3;' : 'color: #64748B; background: #F8FAFC;' }}">
+                                                    {{ $proc->data_prazo->format('d/m/Y') }}
+                                                </span>
+                                            @else
+                                                <span style="font-size: 0.75rem; color: #94A3B8; font-style: italic;">-</span>
+                                            @endif
+                                        </td>
+                                        <td style="padding: 1rem 1.5rem; text-align: right;">
+                                            <button wire:click="openDrawer({{ $proc->id }})" style="background: white; border: 1px solid #CBD5E1; color: #0EA5E9; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; transition: 0.2s;" onmouseover="this.style.backgroundColor='#F0F9FF'; this.style.borderColor='#BAE6FD'; this.style.color='#0284C7';" onmouseout="this.style.backgroundColor='white'; this.style.borderColor='#CBD5E1'; this.style.color='#0EA5E9';">
+                                                Ver
+                                            </button>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" style="padding: 4rem 2rem; text-align: center;">
+                                            <div style="font-size: 0.75rem; color: #94A3B8;">Nenhum processo encontrado.</div>
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="padding: 1rem 1.5rem; border-top: 1px solid #E2E8F0; background: #F8FAFC;">
+                        {{ $processosPaginados->links() }}
+                    </div>
+                </div>
+            @endif
+        </div>
+    </div> @if($showFormModal)
+        @teleport('body')
+        <div style="position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; inset: 0; background-color: rgba(15, 23, 42, 0.7); backdrop-filter: blur(2px);" wire:click="cancelarForm"></div>
+
+            <div style="position: relative; width: 100%; max-width: 800px; background: white; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 2rem; max-height: 90vh; overflow-y: auto; margin: 1rem;" wire:key="form-proc-{{ $formId }}">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid #E2E8F0; padding-bottom: 1rem;">
+                    <h2 style="font-size: 1.25rem; font-weight: 700; color: #0F172A; margin: 0;">
+                        {{ $isEditing ? 'Editar Processo' : 'Cadastrar Novo Processo' }}
+                    </h2>
+                    <button wire:click="cancelarForm" style="background: transparent; border: none; color: #64748B; cursor: pointer; padding: 0.25rem; border-radius: 4px; transition: 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9';" onmouseout="this.style.backgroundColor='transparent';">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <form wire:submit.prevent="salvar" style="display: flex; flex-direction: column; gap: 1.25rem;">
+
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 2; min-width: 250px; position: relative;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #4F46E5; margin-bottom: 0.25rem;">Vincular Cliente</label>
+
+                            <input type="text" wire:model.live="cliente_nome_search" wire:input="$set('cliente_id', null)" placeholder="Busque pelo nome..." style="width: 100%; border: 1px solid #C7D2FE; background: #EEF2FF; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #4F46E5; outline: none;">
+                            <input type="hidden" wire:model="cliente_id">
+
+                            @if(strlen($cliente_nome_search) > 2 && $cliente_id == null)
+                                <div style="position: absolute; z-index: 100; width: 100%; background: white; border: 1px solid #E2E8F0; border-radius: 6px; margin-top: 0.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); overflow: hidden;">
+                                    @foreach($resultadosClientes as $cli)
+                                        <div wire:click="selecionarCliente({{ $cli->id }}, '{{ $cli->nome }}')" style="padding: 0.75rem 1rem; border-bottom: 1px solid #F1F5F9; font-size: 0.85rem; color: #0F172A; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.backgroundColor='#F8FAFC';" onmouseout="this.style.backgroundColor='white';">
+                                            {{ $cli->nome }}
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+                            @error('cliente_id') <span style="color: #E11D48; font-size: 0.65rem; margin-top: 0.25rem; display: block;">{{ $message }}</span> @enderror
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Responsável</label>
+                            <select wire:model="user_id" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; cursor: pointer; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                                <option value="">SELECIONE...</option>
+                                @foreach($listaAdvogados as $adv) <option value="{{ $adv->id }}">{{ $adv->name }}</option> @endforeach
+                            </select>
                         </div>
                     </div>
-                    @if($isEditing)<button wire:click="cancelar"
-                        class="text-xs font-black text-red-500 uppercase tracking-widest hover:underline">Cancelar
-                    Edição</button>@endif
-                </div>
-                <form wire:submit.prevent="salvar" class="grid grid-cols-1 md:grid-cols-12 gap-x-6 gap-y-6">
-                    <div class="md:col-span-6 relative"><x-input-label value="BUSCAR CLIENTE"
-                            class="text-[10px] font-bold text-indigo-500" /><input type="text"
-                            wire:model.live="cliente_nome_search"
-                            class="w-full mt-1 border-none bg-indigo-50 rounded-xl shadow-inner font-bold text-xs uppercase p-3"
-                            placeholder="Nome..."><input type="hidden"
-                            wire:model="cliente_id">@if(strlen($cliente_nome_search) > 2 && $cliente_id == null)
-                            <div
-                                class="absolute z-40 w-full bg-white border border-gray-100 shadow-2xl rounded-xl mt-1 overflow-hidden">
-                                @foreach($resultadosClientes as $cli)<button type="button"
-                                    wire:click="selecionarCliente({{ $cli->id }}, '{{ $cli->nome }}')"
-                                class="w-full text-left px-4 py-3 text-[10px] font-black hover:bg-indigo-600 hover:text-white border-b border-gray-50 uppercase">{{ $cli->nome }}</button>@endforeach
-                        </div>@endif<x-input-error :messages="$errors->get('cliente_id')" class="mt-1" />
+
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">CNJ (Número)</label>
+                            <input type="text" wire:model="numero_processo" x-mask="9999999-99.9999.9.99.9999" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                            @error('numero_processo') <span style="color: #E11D48; font-size: 0.65rem; margin-top: 0.25rem; display: block;">{{ $message }}</span> @enderror
+                        </div>
+                        <div style="flex: 2; min-width: 250px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Título / Ação</label>
+                            <input type="text" wire:model="titulo" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                            @error('titulo') <span style="color: #E11D48; font-size: 0.65rem; margin-top: 0.25rem; display: block;">{{ $message }}</span> @enderror
+                        </div>
                     </div>
-                    <div class="md:col-span-6"><x-input-label value="ADVOGADO"
-                            class="text-[10px] font-bold text-gray-400" /><select wire:model="user_id"
-                            class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                            <option value="">SELECIONE...</option>@foreach($listaAdvogados as $adv) <option
-                            value="{{ $adv->id }}">{{ $adv->name }}</option> @endforeach
-                        </select><x-input-error :messages="$errors->get('user_id')" class="mt-1" /></div>
-                    <div class="md:col-span-4"><x-input-label value="CNJ"
-                            class="text-[10px] font-bold text-gray-400" /><x-text-input wire:model="numero_processo"
-                            class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold"
-                            x-mask="9999999-99.9999.9.99.9999" /><x-input-error :messages="$errors->get('numero_processo')"
-                            class="mt-1" /></div>
-                    <div class="md:col-span-8"><x-input-label value="TÍTULO"
-                            class="text-[10px] font-bold text-gray-400" /><x-text-input wire:model="titulo"
-                            class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold uppercase" /><x-input-error
-                            :messages="$errors->get('titulo')" class="mt-1" /></div>
-                    <div class="md:col-span-4"><x-input-label value="TRIBUNAL"
-                            class="text-[10px] font-bold text-gray-400" /><select wire:model.live="tribunal"
-                            class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                            <option value="">SELECIONE...</option>@foreach($tribunais as $tri) <option value="{{ $tri }}">
-                            {{ $tri }}</option> @endforeach<option value="OUTROS">OUTROS...</option>
-                        </select>@if($tribunal === 'OUTROS')<input type="text" wire:model="tribunal_outro"
-                        class="w-full mt-2 border-none bg-yellow-50 rounded-xl shadow-inner font-bold text-xs uppercase p-3">@endif<x-input-error
-                            :messages="$errors->get('tribunal')" class="mt-1" /></div>
-                    <div class="md:col-span-4"><x-input-label value="VARA"
-                            class="text-[10px] font-bold text-gray-400" /><select wire:model.live="vara"
-                            class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                            <option value="">SELECIONE...</option>@foreach($varas as $v) <option value="{{ $v }}">{{ $v }}
-                            </option> @endforeach<option value="OUTROS">OUTROS...</option>
-                        </select>@if($vara === 'OUTROS')<input type="text" wire:model="vara_outro"
-                        class="w-full mt-2 border-none bg-yellow-50 rounded-xl shadow-inner font-bold text-xs uppercase p-3">@endif<x-input-error
-                            :messages="$errors->get('vara')" class="mt-1" /></div>
-                    <div class="md:col-span-4"><x-input-label value="STATUS"
-                            class="text-[10px] font-bold text-gray-400" /><select wire:model="status"
-                            class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner font-bold text-xs uppercase">
-                            <optgroup label="🔵 INICIAL">
-                                <option>Distribuído</option>
-                                <option>Petição Inicial</option>
-                                <option>Aguardando Citação</option>
-                            </optgroup>
-                            <optgroup label="🟢 TRAMITAÇÃO">
-                                <option>Em Andamento</option>
-                                <option>Concluso para Decisão</option>
-                                <option>Instrução</option>
-                                <option>Contestação/Réplica</option>
-                            </optgroup>
-                            <optgroup label="🟡 AGENDAMENTOS">
-                                <option>Audiência Designada</option>
-                                <option>Aguardando Audiência</option>
-                                <option>Perícia Designada</option>
-                                <option>Apresentação de Laudo</option>
-                            </optgroup>
-                            <optgroup label="🔴 URGÊNCIA">
-                                <option>Prazo em Aberto</option>
-                                <option>Urgência / Liminar</option>
-                                <option>Aguardando Protocolo</option>
-                            </optgroup>
-                            <optgroup label="🟣 DECISÃO">
-                                <option>Sentenciado</option>
-                                <option>Em Grau de Recurso</option>
-                                <option>Cumprimento de Sentença</option>
-                                <option>Acordo/Pagamento</option>
-                            </optgroup>
-                            <optgroup label="⚪ FINALIZADO">
-                                <option>Trânsito em Julgado</option>
-                                <option>Suspenso / Sobrestado</option>
-                                <option>Arquivado</option>
-                            </optgroup>
-                        </select><x-input-error :messages="$errors->get('status')" class="mt-1" /></div>
-                    <div class="md:col-span-3"><x-input-label value="PRAZO"
-                            class="text-[10px] font-bold text-rose-500" /><x-text-input wire:model="data_prazo" type="date"
-                            class="w-full mt-1 bg-rose-50 border-none shadow-inner font-bold text-rose-700" /><x-input-error
-                            :messages="$errors->get('data_prazo')" class="mt-1" /></div>
-                    <div class="md:col-span-3"><x-input-label value="VALOR (R$)"
-                            class="text-[10px] font-bold text-gray-400" /><x-text-input wire:model="valor_causa" type="text"
-                            class="w-full mt-1 bg-gray-50 border-none shadow-inner font-bold"
-                            x-mask:dynamic="$money($input, ',', '.', 2)" /><x-input-error
-                            :messages="$errors->get('valor_causa')" class="mt-1" /></div>
-                    
-                    {{-- CHECKBOX SIMPLES DE URGÊNCIA (Mais robusto) --}}
-                    <div class="md:col-span-6 flex items-end justify-start pb-4">
-                        <label class="flex items-center gap-3 cursor-pointer p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors bg-white shadow-sm w-full">
-                            <input type="checkbox" 
-                                wire:model="is_urgent" 
-                                class="w-5 h-5 text-rose-600 rounded border-gray-300 focus:ring-rose-500 shadow-sm cursor-pointer">
-                            
-                            <div class="flex flex-col">
-                                <span class="text-xs font-black text-gray-700 uppercase tracking-widest">
-                                    Urgente / Prioritário
-                                </span>
-                                <span class="text-[10px] text-gray-400 font-medium">
-                                    Destaca este processo na lista com um ícone de alerta
-                                </span>
+
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Tribunal</label>
+                            <select wire:model.live="tribunal" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; cursor: pointer; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                                <option value="">SELECIONE...</option>
+                                @foreach($tribunaisLista as $tri) <option value="{{ $tri }}">{{ $tri }}</option> @endforeach
+                                <option value="OUTROS">OUTROS...</option>
+                            </select>
+                            @if($tribunal === 'OUTROS')
+                                <input type="text" wire:model="tribunal_outro" placeholder="Especifique..." style="width: 100%; border: 1px solid #FEF08A; background: #FEFCE8; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #A16207; outline: none; margin-top: 0.5rem;">
+                            @endif
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Vara</label>
+                            <select wire:model.live="vara" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; cursor: pointer; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                                <option value="">SELECIONE...</option>
+                                @foreach($varasLista as $v) <option value="{{ $v }}">{{ $v }}</option> @endforeach
+                                <option value="OUTROS">OUTROS...</option>
+                            </select>
+                            @if($vara === 'OUTROS')
+                                <input type="text" wire:model="vara_outro" placeholder="Especifique..." style="width: 100%; border: 1px solid #FEF08A; background: #FEFCE8; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #A16207; outline: none; margin-top: 0.5rem;">
+                            @endif
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Status</label>
+                            <select wire:model="status" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; cursor: pointer; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';">
+                                @foreach($macroFases as $macro => $lista)
+                                    <optgroup label="{{ $macro }}">
+                                        @foreach($lista as $st) <option value="{{ $st }}">{{ $st }}</option> @endforeach
+                                    </optgroup>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #E11D48; margin-bottom: 0.25rem;">Data do Prazo</label>
+                            <input type="date" wire:model="data_prazo" style="width: 100%; border: 1px solid #FECDD3; background: #FFF1F2; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #E11D48; outline: none;">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #059669; margin-bottom: 0.25rem;">Valor da Causa</label>
+                            <input type="text" wire:model="valor_causa" x-mask:dynamic="$money($input, ',', '.', 2)" style="width: 100%; border: 1px solid #A7F3D0; background: #ECFDF5; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #059669; outline: none;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #E2E8F0; background: #F8FAFC; border-radius: 6px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9';">
+                            <input type="checkbox" wire:model="is_urgent" style="width: 18px; height: 18px; accent-color: #E11D48; cursor: pointer;">
+                            <div>
+                                <span style="display: block; font-size: 0.85rem; font-weight: 600; color: #0F172A;">Marcar como Urgente</span>
+                                <span style="display: block; font-size: 0.7rem; color: #64748B;">Destaca este processo visualmente.</span>
                             </div>
                         </label>
                     </div>
 
-                    <div class="md:col-span-6 flex items-end"><button type="submit"
-                            class="w-full py-4 bg-gray-900 text-white rounded-xl font-black shadow-xl hover:bg-indigo-600 transition-all uppercase text-xs tracking-widest">{{ $isEditing ? 'Salvar' : 'Cadastrar' }}</button>
+                    <div>
+                        <label style="display: block; font-size: 0.7rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Observações Internas</label>
+                        <textarea wire:model="observacoes" rows="3" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem 0.75rem; font-size: 0.875rem; color: #0F172A; outline: none; resize: vertical; transition: 0.2s;" onfocus="this.style.borderColor='#4F46E5';" onblur="this.style.borderColor='#CBD5E1';"></textarea>
                     </div>
-                    <div class="md:col-span-12"><x-input-label value="OBSERVAÇÕES"
-                            class="text-[10px] font-bold text-gray-400" /><textarea wire:model="observacoes" rows="2"
-                            class="w-full mt-1 border-none bg-gray-50 rounded-xl shadow-inner focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></textarea>
+
+                    <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                        <button type="button" wire:click="cancelarForm" style="background: white; border: 1px solid #CBD5E1; color: #475569; padding: 0.65rem 1.5rem; border-radius: 6px; font-size: 0.875rem; font-weight: 600; margin-right: 0.5rem; cursor: pointer; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9';" onmouseout="this.style.backgroundColor='white';">Cancelar</button>
+                        <button type="submit" style="background-color: #0F172A; color: white; padding: 0.65rem 2rem; border-radius: 6px; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#1E293B';" onmouseout="this.style.backgroundColor='#0F172A';">
+                            {{ $isEditing ? 'Atualizar' : 'Salvar' }}
+                        </button>
                     </div>
+
                 </form>
             </div>
         </div>
+        @endteleport
+    @endif
 
-        {{-- LISTAGEM --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden text-left mt-8">
-
-            <div class="px-6 py-5 border-b border-gray-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-                
-                <div class="flex p-1 bg-gray-100 rounded-lg self-start md:self-auto">
-                    <button wire:click="mudarFiltro('todos')"
-                        class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'todos' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900' }}">
-                        Todos
-                    </button>
-                    <button wire:click="mudarFiltro('meus')"
-                        class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'meus' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-indigo-600' }}">
-                        Meus
-                    </button>
-                    <button wire:click="mudarFiltro('urgentes')"
-                        class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'urgentes' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500 hover:text-rose-600' }}">
-                        Urgentes
-                    </button>
-                    {{-- BOTÃO NOVO: VENCIDOS --}}
-                    <button wire:click="mudarFiltro('vencidos')"
-                        class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all {{ $filtroAtivo === 'vencidos' ? 'bg-white text-rose-700 shadow-sm' : 'text-gray-500 hover:text-rose-700' }}">
-                        Vencidos
-                    </button>
-                </div>
-
-                <div class="w-full md:w-72">
-                    <div class="flex items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-0.5 transition-all shadow-sm focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500/20">
-                        <div class="shrink-0 text-gray-400">
-                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-                        <input 
-                            wire:model.live.debounce.300ms="search" 
-                            type="text" 
-                            class="w-full border-none bg-transparent py-2.5 pl-2 text-xs font-bold uppercase tracking-wide text-gray-700 placeholder-gray-400 focus:ring-0" 
-                            placeholder="Buscar por CNJ, advogado..." 
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-100">
-                    <thead class="bg-gray-50/50">
-                        <tr>
-                            <th scope="col" class="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Processo</th>
-                            <th scope="col" class="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Cliente / Local</th>
-                            
-                            <th scope="col" class="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Responsável</th>
-                            
-                            <th scope="col" class="px-6 py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                            <th scope="col" class="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Próximo Prazo</th>
-                            <th scope="col" class="relative px-6 py-4">
-                                <span class="sr-only">Ações</span>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-50">
-                        @forelse($processos as $proc)
-                            <tr class="group hover:bg-gray-50 transition duration-150 border-l-4 border-transparent hover:border-indigo-500">
-                                
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="flex flex-col">
-                                        <div class="flex items-center gap-2">
-                                            @if($proc->is_urgent)
-                                                <span class="flex-shrink-0 text-rose-500" title="Processo Urgente">
-                                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"></path></svg>
-                                                </span>
-                                            @endif
-                                            <span class="text-sm font-bold text-gray-900 truncate max-w-[200px]" title="{{ $proc->titulo }}">
-                                                {{ $proc->titulo }}
-                                            </span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5 mt-1">
-                                            <svg class="w-3 h-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                                            </svg>
-                                            <span class="font-mono text-[11px] text-gray-500 font-medium tracking-tight">
-                                                {{ $proc->numero_processo }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="flex flex-col">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-xs font-bold text-gray-700 truncate max-w-[150px]">{{ $proc->cliente?->nome }}</span>
-                                        </div>
-                                        <div class="flex items-center gap-1 mt-1 text-gray-400">
-                                            <span class="text-[10px] font-medium uppercase">{{ $proc->tribunal }}</span>
-                                            <span class="text-[10px]">&bull;</span>
-                                            <span class="text-[10px] font-medium truncate max-w-[100px]">{{ $proc->vara }}</span>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="flex items-center gap-2">
-                                        @if($proc->advogado)
-                                            <div class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
-                                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                </svg>
-                                            </div>
-                                            <span class="text-xs font-bold text-gray-600 truncate max-w-[140px]">
-                                                {{ $proc->advogado->name }}
-                                            </span>
-                                        @else
-                                            <span class="text-xs text-gray-400 italic pl-1">Não atribuído</span>
-                                        @endif
-                                    </div>
-                                </td>
-
-                                <td class="px-6 py-4 whitespace-nowrap text-center">
-                                    <span class="px-3 py-1 inline-flex text-[9px] font-black uppercase tracking-widest rounded-full border {{ $proc->cor }}">
-                                        {{ $proc->status instanceof \App\Enums\ProcessoStatus ? $proc->status->value : $proc->status }}
-                                    </span>
-                                </td>
-
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    @if($proc->data_prazo)
-                                        @php
-                                            $hoje = now()->startOfDay();
-                                            $prazo = $proc->data_prazo->startOfDay();
-                                            $diff = $hoje->diffInDays($prazo, false);
-                                            $isVencido = $diff < 0;
-                                            $isHoje = $diff == 0;
-                                        @endphp
-                                        <div class="flex items-center gap-3">
-                                            <div class="flex flex-col items-center justify-center w-9 h-9 border rounded-lg {{ $isVencido ? 'bg-rose-50 border-rose-100 text-rose-600' : ($isHoje ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-gray-50 border-gray-200 text-gray-600') }}">
-                                                <span class="text-[9px] font-bold uppercase leading-none">{{ $proc->data_prazo->format('M') }}</span>
-                                                <span class="text-xs font-black leading-none mt-0.5">{{ $proc->data_prazo->format('d') }}</span>
-                                            </div>
-                                            <div class="flex flex-col">
-                                                @if($isVencido)
-                                                    <span class="text-[10px] font-bold text-rose-600 uppercase">Vencido</span>
-                                                @elseif($isHoje)
-                                                    <span class="text-[10px] font-bold text-amber-600 uppercase">Hoje</span>
-                                                @else
-                                                    <span class="text-[10px] font-bold text-gray-600 uppercase">Em dia</span>
-                                                    <span class="text-[9px] text-gray-400">{{ $diff }} dias</span>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    @else
-                                        <span class="text-xs text-gray-300 italic pl-2">-</span>
-                                    @endif
-                                </td>
-
-                                <td class="px-6 py-4 whitespace-nowrap text-right">
-                                    <button wire:click="openDrawer({{ $proc->id }})" 
-                                        class="text-[10px] font-bold text-indigo-600 border border-indigo-100 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all uppercase tracking-widest shadow-sm">
-                                        Abrir
-                                    </button>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="px-6 py-16 text-center">
-                                    <div class="flex flex-col items-center justify-center">
-                                        <div class="w-16 h-16 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center text-gray-300 mb-4">
-                                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                        </div>
-                                        <p class="text-sm font-bold text-gray-900 uppercase tracking-widest">Nenhum processo encontrado</p>
-                                        <button wire:click="$set('search', '')" class="mt-4 text-xs font-bold text-indigo-600 hover:underline uppercase">Limpar Busca</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50">
-                {{ $processos->links() }}
-            </div>
-        </div>
-
-    </div>
-
-    {{-- MODAL COM EFEITO BLACKOUT TOTAL USANDO TELEPORT --}}
     @if($drawerOpen && $activeProcess)
         @teleport('body')
-            <div class="fixed inset-0 z-[99999]" role="dialog" aria-modal="true" style="z-index: 99999;">
-                
-                {{-- BLACKOUT: Fundo escuro cobrindo toda a tela (com estilo inline para garantir) --}}
-                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm" 
-                     style="background-color: rgba(17, 24, 39, 0.85); position: fixed; top: 0; left: 0; width: 100%; height: 100%;"
-                     wire:click="closeDrawer"></div>
+        <div style="position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center;">
 
-                <div class="fixed inset-0 z-[99999] overflow-y-auto" style="z-index: 99999;">
-                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-                        
-                        {{-- Conteúdo do Modal --}}
-                        <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-white/10 z-[100000]">
+            <div style="position: absolute; inset: 0; background-color: rgba(17, 24, 39, 0.7); backdrop-filter: blur(2px);" wire:click="closeDrawer"></div>
 
-                            <div class="bg-slate-900 relative overflow-hidden shrink-0">
-                                <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-[100px] opacity-30 -mr-20 -mt-20 pointer-events-none"></div>
-                                <div class="absolute bottom-0 left-0 w-40 h-40 bg-cyan-500 rounded-full blur-[80px] opacity-20 -ml-10 -mb-10 pointer-events-none"></div>
+            <div style="position: relative; width: 100%; max-width: 700px; background: white; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); overflow: hidden; margin: 1rem; max-height: 95vh; display: flex; flex-direction: column; border-top: {{ $activeProcess->is_urgent ? '4px solid #E11D48' : '4px solid #4F46E5' }};">
 
-                                <div class="relative z-10 px-8 py-6">
-                                    <div class="flex justify-between items-start mb-6">
-                                        <div class="flex items-center gap-3">
-                                            <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg {{ $activeProcess->cor }}">
-                                                {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
-                                            </span>
-                                            @if($activeProcess->is_urgent)
-                                                <span class="px-3 py-1 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase tracking-widest border border-rose-400 shadow-lg flex items-center gap-1">
-                                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"></path></svg>
-                                                    URGENTE
-                                                </span>
-                                            @endif
-                                        </div>
-                                        
-                                        <button wire:click="closeDrawer" class="text-slate-400 hover:text-white transition bg-white/5 hover:bg-white/20 p-2 rounded-full backdrop-blur-md">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-                                        </button>
-                                    </div>
+                @if($activeProcess->is_urgent)
+                    <div style="background-color: #FFF1F2; color: #E11D48; padding: 0.75rem 2rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #FECDD3;">
+                        <svg style="width: 16px; height: 16px;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                        Processo Prioritário
+                    </div>
+                @endif
 
-                                    <h2 class="text-2xl md:text-3xl font-black text-white uppercase tracking-tight leading-tight mb-8 drop-shadow-lg">
-                                        {{ $activeProcess->titulo }}
-                                    </h2>
+                <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0;">
+                    <div>
+                        <span style="display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; background-color: #EEF2FF; border: 1px solid #E0E7FF; color: #4F46E5; margin-bottom: 0.5rem;">
+                            {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
+                        </span>
+                        <h2 style="font-size: 1.25rem; font-weight: 700; color: #0F172A; margin: 0; line-height: 1.3;">{{ $activeProcess->titulo }}</h2>
+                        <div style="font-family: monospace; font-size: 0.85rem; color: #64748B; margin-top: 0.25rem;">
+                            {{ $activeProcess->numero_processo }}
+                        </div>
+                    </div>
+                    <button wire:click="closeDrawer" style="background: transparent; border: none; color: #64748B; cursor: pointer; padding: 0.25rem; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9';" onmouseout="this.style.backgroundColor='transparent';">
+                        <svg style="width: 24px; height: 24px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    </button>
+                </div>
 
-                                    <div x-data="{ copied: false }">
-                                        <button 
-                                            @click="navigator.clipboard.writeText('{{ $activeProcess->numero_processo }}'); copied = true; setTimeout(() => copied = false, 2000)"
-                                            class="group relative w-full sm:w-auto flex items-center justify-between gap-6 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 rounded-2xl px-6 py-5 transition-all duration-300 shadow-xl overflow-hidden ring-1 ring-white/5">
-                                            
-                                            <div class="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 transform translate-x-[-100%] group-hover:translate-x-[100%]"></div>
+                <div style="padding: 2rem; overflow-y: auto; flex: 1;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+                        <div style="border: 1px solid #E2E8F0; padding: 1rem; border-radius: 6px;">
+                            <span style="display: block; font-size: 0.65rem; font-weight: 600; color: #64748B; text-transform: uppercase; margin-bottom: 0.25rem;">Cliente</span>
+                            <div style="font-size: 0.875rem; font-weight: 600; color: #4F46E5;">{{ $activeProcess->cliente->nome ?? 'Não informado' }}</div>
+                        </div>
+                        <div style="border: 1px solid #E2E8F0; padding: 1rem; border-radius: 6px;">
+                            <span style="display: block; font-size: 0.65rem; font-weight: 600; color: #64748B; text-transform: uppercase; margin-bottom: 0.25rem;">Responsável</span>
+                            <div style="font-size: 0.875rem; font-weight: 600; color: #0F172A;">{{ $activeProcess->advogado->name ?? 'Não atribuído' }}</div>
+                        </div>
+                    </div>
 
-                                            <div class="flex flex-col items-start text-left relative z-10">
-                                                <div class="flex items-center gap-2 mb-1.5">
-                                                    <svg class="w-3 h-3 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
-                                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.25em]">CNJ / Identificador</span>
-                                                </div>
-                                                
-                                                <span class="font-mono text-xl sm:text-3xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-slate-300 group-hover:from-cyan-300 group-hover:to-indigo-300 transition-all duration-300 drop-shadow-sm">
-                                                    {{ $activeProcess->numero_processo }}
-                                                </span>
-                                            </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                        <div style="border: 1px solid #D1FAE5; background-color: #ECFDF5; padding: 1rem; border-radius: 6px;">
+                            <span style="display: block; font-size: 0.65rem; font-weight: 600; color: #059669; text-transform: uppercase; margin-bottom: 0.25rem;">Valor da Causa</span>
+                            <div style="font-size: 1rem; font-weight: 700; color: #064E3B;">R$ {{ number_format($activeProcess->valor_causa, 2, ',', '.') }}</div>
+                        </div>
+                        <div style="border: 1px solid #E2E8F0; padding: 1rem; border-radius: 6px;">
+                            <span style="display: block; font-size: 0.65rem; font-weight: 600; color: #64748B; text-transform: uppercase; margin-bottom: 0.25rem;">Tribunal</span>
+                            <div style="font-size: 0.875rem; font-weight: 600; color: #0F172A;">{{ $activeProcess->tribunal }}</div>
+                        </div>
+                        <div style="border: 1px solid #E2E8F0; padding: 1rem; border-radius: 6px;">
+                            <span style="display: block; font-size: 0.65rem; font-weight: 600; color: #64748B; text-transform: uppercase; margin-bottom: 0.25rem;">Vara</span>
+                            <div style="font-size: 0.875rem; font-weight: 600; color: #0F172A;">{{ $activeProcess->vara }}</div>
+                        </div>
+                    </div>
 
-                                            <div class="relative z-10 flex flex-col items-center justify-center pl-6 border-l border-white/10 h-full">
-                                                <div class="p-2 rounded-lg bg-white/5 group-hover:bg-cyan-500 group-hover:text-white text-slate-400 transition-all duration-300">
-                                                    <svg x-show="!copied" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                    </svg>
-                                                    <svg x-show="copied" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                </div>
-                                                <span x-show="!copied" class="text-[8px] font-bold uppercase tracking-wider text-slate-500 mt-1 group-hover:text-cyan-300 transition-colors">Copiar</span>
-                                                <span x-show="copied" x-cloak class="text-[8px] font-bold uppercase tracking-wider text-emerald-400 mt-1 animate-pulse">Copiado</span>
-                                            </div>
-                                        </button>
-                                    </div>
+                    <div style="background-color: #F8FAFC; border-radius: 6px; border: 1px solid #E2E8F0; padding: 1rem; margin-bottom: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label style="font-size: 0.75rem; font-weight: 600; color: #0F172A;">Atualizar Fase do Processo</label>
+                            @if($activeProcess->data_prazo)
+                                <span style="color: #E11D48; font-size: 0.7rem; font-weight: 600; background-color: #FFF1F2; padding: 0.15rem 0.4rem; border-radius: 4px; border: 1px solid #FECDD3;">
+                                    Prazo: {{ $activeProcess->data_prazo->format('d/m/Y') }}
+                                </span>
+                            @endif
+                        </div>
+                        <select wire:change="updateStatus($event.target.value)" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0.65rem; font-size: 0.875rem; color: #0F172A; outline: none; cursor: pointer; transition: border-color 0.2s;" onfocus="this.style.borderColor='#4F46E5'" onblur="this.style.borderColor='#CBD5E1'">
+                            <option value="{{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}" selected>
+                                Atual: {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
+                            </option>
+                            <optgroup label="---------">
+                                @foreach($macroFases as $macro => $lista)
+                                    <optgroup label="{{ $macro }}">
+                                        @foreach($lista as $st) <option value="{{ $st }}">{{ $st }}</option> @endforeach
+                                    </optgroup>
+                                @endforeach
+                            </optgroup>
+                        </select>
+                    </div>
 
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        @if($activeProcess->observacoes)
+                            <div>
+                                <h4 style="font-size: 0.75rem; font-weight: 700; color: #0F172A; text-transform: uppercase; margin-bottom: 0.5rem; border-bottom: 1px solid #E2E8F0; padding-bottom: 0.25rem;">Notas Internas</h4>
+                                <div style="font-size: 0.875rem; color: #713F12; font-style: italic; background-color: #FEFCE8; padding: 1rem; border-radius: 6px; border: 1px solid #FEF08A;">
+                                    "{{ $activeProcess->observacoes }}"
                                 </div>
                             </div>
+                        @endif
 
-                            <div class="p-8 bg-slate-50 space-y-8">
+                        <div>
+                            <h4 style="font-size: 0.75rem; font-weight: 700; color: #0F172A; text-transform: uppercase; margin-bottom: 1rem; border-bottom: 1px solid #E2E8F0; padding-bottom: 0.25rem;">Histórico</h4>
+                            <div style="position: relative; padding-left: 0.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                                <div style="position: absolute; left: 13px; top: 8px; bottom: 8px; width: 2px; background: #E2E8F0;"></div>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-indigo-200 transition">
-                                        <div class="w-12 h-12 shrink-0 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-black border-2 border-indigo-100">
-                                            {{ substr($activeProcess->cliente->nome, 0, 1) }}
-                                        </div>
-                                        <div class="overflow-hidden">
-                                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Cliente</span>
-                                            <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->cliente->nome }}">
-                                                {{ $activeProcess->cliente->nome }}
-                                            </h3>
-                                        </div>
-                                    </div>
-
-                                    <div class="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 flex items-center gap-4 hover:border-slate-300 transition">
-                                        <div class="w-12 h-12 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black border-2 border-slate-200">
-                                            {{ substr($activeProcess->advogado->name ?? '?', 0, 1) }}
-                                        </div>
-                                        <div class="overflow-hidden">
-                                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Responsável</span>
-                                            <h3 class="text-sm font-bold text-slate-900 truncate" title="{{ $activeProcess->advogado->name ?? 'Sem Advogado' }}">
-                                                {{ $activeProcess->advogado->name ?? 'Não atribuído' }}
-                                            </h3>
+                                @foreach($activeProcess->historico as $hist)
+                                    <div style="position: relative; display: flex; gap: 1rem;">
+                                        <div style="position: relative; z-index: 10; flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; background-color: {{ $hist->acao === 'Criação' ? '#10B981' : '#4F46E5' }}; border: 2px solid white; margin-top: 2px;"></div>
+                                        <div style="padding-bottom: 0.5rem;">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                <p style="font-size: 0.85rem; font-weight: 600; color: #0F172A;">{{ $hist->acao }}</p>
+                                                <span style="font-size: 0.65rem; color: #64748B;">{{ $hist->created_at->format('d/m/Y H:i') }}</span>
+                                            </div>
+                                            <p style="font-size: 0.8rem; color: #475569; margin-top: 0.15rem;">{{ $hist->descricao }}</p>
+                                            <p style="font-size: 0.65rem; color: #94A3B8; margin-top: 0.25rem; font-weight: 500;">Por: {{ $hist->user->name ?? 'Sistema' }}</p>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                    <div class="col-span-2 sm:col-span-1 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 flex flex-col justify-center">
-                                        <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor da Causa</span>
-                                        <div class="text-lg font-black text-emerald-900">
-                                            R$ {{ number_format($activeProcess->valor_causa, 2, ',', '.') }}
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
-                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tribunal</span>
-                                        <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->tribunal }}">
-                                            {{ $activeProcess->tribunal }}
-                                        </div>
-                                    </div>
-
-                                    <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-center">
-                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Vara</span>
-                                        <div class="text-sm font-bold text-slate-700 truncate" title="{{ $activeProcess->vara }}">
-                                            {{ $activeProcess->vara }}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                    <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                                        <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest">Controle de Fase</h4>
-                                        @if($activeProcess->data_prazo)
-                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-100 text-[10px] font-bold text-rose-600 uppercase">
-                                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                Vence {{ $activeProcess->data_prazo->format('d/m') }}
-                                            </span>
-                                        @endif
-                                    </div>
-                                    <div class="p-5">
-                                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-2">Atualizar Status</label>
-                                        <div class="relative">
-                                            <select wire:change="updateStatus($event.target.value)"
-                                                class="w-full appearance-none bg-none rounded-xl border-slate-200 text-sm font-bold text-slate-700 uppercase focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 py-3 pl-4 pr-10 bg-slate-50 hover:bg-white transition cursor-pointer shadow-sm">
-                                                
-                                                <option value="{{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}" selected>
-                                                    {{ $activeProcess->status instanceof \App\Enums\ProcessoStatus ? $activeProcess->status->value : $activeProcess->status }}
-                                                </option>
-                                                
-                                                <optgroup label="🔵 INICIAL">
-                                                    <option>Distribuído</option>
-                                                    <option>Petição Inicial</option>
-                                                    <option>Aguardando Citação</option>
-                                                </optgroup>
-                                                <optgroup label="🟢 TRAMITAÇÃO">
-                                                    <option>Em Andamento</option>
-                                                    <option>Concluso para Decisão</option>
-                                                    <option>Instrução</option>
-                                                    <option>Contestação/Réplica</option>
-                                                </optgroup>
-                                                <optgroup label="🟡 AGENDAMENTOS">
-                                                    <option>Audiência Designada</option>
-                                                    <option>Aguardando Audiência</option>
-                                                    <option>Perícia Designada</option>
-                                                    <option>Apresentação de Laudo</option>
-                                                </optgroup>
-                                                <optgroup label="🔴 URGÊNCIA">
-                                                    <option>Prazo em Aberto</option>
-                                                    <option>Urgência / Liminar</option>
-                                                    <option>Aguardando Protocolo</option>
-                                                </optgroup>
-                                                <optgroup label="🟣 DECISÃO">
-                                                    <option>Sentenciado</option>
-                                                    <option>Em Grau de Recurso</option>
-                                                    <option>Cumprimento de Sentença</option>
-                                                    <option>Acordo/Pagamento</option>
-                                                </optgroup>
-                                                <optgroup label="⚪ FINALIZADO">
-                                                    <option>Trânsito em Julgado</option>
-                                                    <option>Suspenso / Sobrestado</option>
-                                                    <option>Arquivado</option>
-                                                </optgroup>
-                                            </select>
-                                            
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="space-y-8">
-                                    <div>
-                                        <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                            Notas Internas
-                                        </h4>
-                                        <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900/80 font-medium leading-relaxed italic">
-                                            @if($activeProcess->observacoes)
-                                                "{{ $activeProcess->observacoes }}"
-                                            @else
-                                                <span class="text-amber-900/40 not-italic">Sem observações registradas.</span>
-                                            @endif
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <h4 class="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                            Linha do Tempo
-                                        </h4>
-                                        
-                                        <div class="relative pl-2 space-y-6 before:content-[''] before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
-                                            @foreach($activeProcess->historico as $hist)
-                                                <div class="relative flex gap-4 group">
-                                                    
-                                                    @if($hist->acao === 'Criação')
-                                                        <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-emerald-100 text-emerald-500 flex items-center justify-center group-hover:border-emerald-500 group-hover:scale-110 transition-all shadow-sm">
-                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                                            </svg>
-                                                        </div>
-                                                    @else
-                                                        <div class="relative z-10 flex-none w-6 h-6 rounded-full bg-white border-2 border-indigo-100 text-indigo-500 flex items-center justify-center group-hover:border-indigo-500 group-hover:scale-110 transition-all shadow-sm">
-                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                            </svg>
-                                                        </div>
-                                                    @endif
-                                                    
-                                                    <div class="flex-1 pb-2">
-                                                        <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
-                                                            <p class="text-xs font-bold text-slate-800 uppercase tracking-tight">{{ $hist->acao }}</p>
-                                                            <span class="text-[10px] font-bold text-slate-400 tabular-nums">
-                                                                {{ $hist->created_at->format('d/m/Y H:i') }}
-                                                            </span>
-                                                        </div>
-                                                        <p class="text-xs text-slate-500 mt-1 leading-snug">{{ $hist->descricao }}</p>
-                                                        <p class="text-[9px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
-                                                            Por: {{ $hist->user->name ?? 'Sistema' }}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            <div class="bg-white px-8 py-5 border-t border-slate-100 flex gap-4 shrink-0">
-                                <button wire:click="editar({{ $activeProcess->id }})"
-                                    class="flex-1 py-3 bg-white border-2 border-slate-200 rounded-xl text-xs font-black text-slate-700 uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition shadow-sm hover:shadow-md">
-                                    Editar Dados
-                                </button>
-                                <button onclick="confirm('Tem certeza que deseja excluir este processo? Isso não pode ser desfeito.') || event.stopImmediatePropagation()"
-                                    wire:click="excluir({{ $activeProcess->id }})"
-                                    class="flex-1 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl text-xs font-black text-rose-600 uppercase tracking-widest hover:bg-rose-100 hover:border-rose-200 transition shadow-sm hover:shadow-md">
-                                    Excluir
-                                </button>
+                                @endforeach
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <div style="background-color: #F8FAFC; padding: 1rem 2rem; border-top: 1px solid #E2E8F0; display: flex; justify-content: flex-end; gap: 0.5rem; flex-shrink: 0;">
+                    <button wire:click="editar({{ $activeProcess->id }})" style="padding: 0.65rem 1.5rem; background-color: white; border: 1px solid #CBD5E1; color: #0F172A; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: 0.2s;" onmouseover="this.style.backgroundColor='#F1F5F9';" onmouseout="this.style.backgroundColor='white';">Editar</button>
+                    <button onclick="confirm('Tem certeza que deseja excluir este processo?') || event.stopImmediatePropagation()" wire:click="excluir({{ $activeProcess->id }})" style="padding: 0.65rem 1.5rem; background-color: white; border: 1px solid #FECDD3; color: #E11D48; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: 0.2s;" onmouseover="this.style.backgroundColor='#FFF1F2';" onmouseout="this.style.backgroundColor='white';">Excluir</button>
+                </div>
+
             </div>
+        </div>
         @endteleport
     @endif
 </div>

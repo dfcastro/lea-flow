@@ -40,4 +40,9 @@ class Cliente extends Model
     {
         $this->attributes['cidade'] = mb_strtoupper($value, 'UTF-8');
     }
+
+    public function processos()
+    {
+        return $this->hasMany(Processo::class);
+    }
 }

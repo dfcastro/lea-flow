@@ -102,7 +102,8 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                     </div>
                     <div class="text-left">
                         <h2 class="text-2xl font-black text-gray-900 tracking-tighter uppercase">
-                            {{ $isEditing ? 'Editar Perfil' : 'Gestão de Equipe' }}</h2>
+                            {{ $isEditing ? 'Editar Perfil' : 'Gestão de Equipe' }}
+                        </h2>
                         <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest text-left">Controle de
                             Colaboradores • L&A Flow</p>
                     </div>
@@ -179,7 +180,8 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                 <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)"
                     class="mt-6 flex items-center p-4 border-l-4 border-emerald-500 bg-emerald-50 rounded-xl shadow-sm">
                     <div class="ml-3 font-black text-emerald-800 uppercase tracking-widest text-[10px]">
-                        {{ session('message') }}</div>
+                        {{ session('message') }}
+                    </div>
                 </div>
             @endif
         </div>
@@ -209,7 +211,8 @@ with(fn() => ['usuarios' => User::latest()->paginate(10)]);
                                 <div class="text-left">
                                     <div class="font-black text-gray-900 tracking-tighter uppercase">{{ $user->name }}</div>
                                     <div class="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
-                                        {{ $user->cargo }} • {{ $user->email }}</div>
+                                        {{ $user->cargo }} • {{ $user->email }}
+                                    </div>
                                 </div>
                             </div>
                         </td>
