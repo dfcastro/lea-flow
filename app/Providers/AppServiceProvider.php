@@ -14,6 +14,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('gerir-equipe', function (User $user) {
             return $user->role === 'admin';
         });
-        
+        // Define quem pode acessar o financeiro
+        Gate::define('acesso-financeiro', function ($user) {
+            $cargo = strtolower($user->cargo);
+            return $cargo === 'advogado' || $user->role === 'admin';
+        });
+
     }
 }

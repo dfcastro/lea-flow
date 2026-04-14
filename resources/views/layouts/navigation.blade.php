@@ -19,20 +19,28 @@
                         class="font-bold text-xs uppercase tracking-widest text-slate-600 hover:text-indigo-600 transition-colors">
                         Dashboard
                     </x-nav-link>
-                    <x-nav-link :href="route('processos')" :active="request()->routeIs('processos')"
+                    <x-nav-link :href="route('processos.index')" :active="request()->routeIs('processos.*')"
                         class="font-bold text-xs uppercase tracking-widest text-slate-600 hover:text-indigo-600 transition-colors">
                         Processos
                     </x-nav-link>
-                    <x-nav-link :href="route('clientes')" :active="request()->routeIs('clientes')"
+                    <x-nav-link :href="route('clientes.index')" :active="request()->routeIs('clientes.*')"
                         class="font-bold text-xs uppercase tracking-widest text-slate-600 hover:text-indigo-600 transition-colors">
                         Clientes
                     </x-nav-link>
-                    @if(Auth::user()->role === 'admin')
-                        <x-nav-link :href="route('equipe')" :active="request()->routeIs('equipe')"
+
+                    {{-- LINK FINANCEIRO - Visível para Admin e Advogado --}}
+
+                    <x-nav-link :href="route('financeiro.index')" :active="request()->routeIs('financeiro.*')"
+                        class="font-bold text-xs uppercase tracking-widest text-emerald-600 hover:text-emerald-700 transition-colors">
+                        Financeiro
+                    </x-nav-link>
+
+                    @can('gerir-equipe')
+                        <x-nav-link :href="route('users.index')" :active="request()->routeIs('users.index')"
                             class="font-bold text-xs uppercase tracking-widest text-slate-600 hover:text-indigo-600 transition-colors">
                             Equipe
                         </x-nav-link>
-                    @endif
+                    @endcan
                 </div>
             </div>
 
@@ -92,26 +100,36 @@
         </div>
     </div>
 
+    {{-- Menu Mobile --}}
     <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden bg-slate-50 border-b border-slate-200">
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')"
                 class="text-xs font-bold uppercase tracking-widest">
                 Dashboard
             </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('processos')" :active="request()->routeIs('processos')"
+            <x-responsive-nav-link :href="route('processos.index')" :active="request()->routeIs('processos.*')"
                 class="text-xs font-bold uppercase tracking-widest">
                 Processos
             </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('clientes')" :active="request()->routeIs('clientes')"
+            <x-responsive-nav-link :href="route('clientes.index')" :active="request()->routeIs('clientes.*')"
                 class="text-xs font-bold uppercase tracking-widest">
                 Clientes
             </x-responsive-nav-link>
-            @if(Auth::user()->role === 'admin')
-                <x-responsive-nav-link :href="route('equipe')" :active="request()->routeIs('equipe')"
+
+            {{-- LINK FINANCEIRO MOBILE --}}
+            @can('acesso-financeiro')
+                <x-responsive-nav-link :href="route('financeiro.index')" :active="request()->routeIs('financeiro.*')"
+                    class="text-xs font-bold uppercase tracking-widest text-emerald-600">
+                    Financeiro
+                </x-responsive-nav-link>
+            @endcan
+
+            @can('gerir-equipe')
+                <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.index')"
                     class="text-xs font-bold uppercase tracking-widest text-indigo-600">
                     Equipe
                 </x-responsive-nav-link>
-            @endif
+            @endcan
         </div>
 
         <div class="pt-4 pb-4 border-t border-slate-200 bg-white">

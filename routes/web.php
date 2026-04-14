@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ClienteController;
+use Livewire\Volt\Volt;
 
 // 1. Página Inicial (Pública)
 Route::get('/', function () {
@@ -29,10 +30,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/clientes', [ClienteController::class, 'index'])->name('clientes.index');
     Route::post('/clientes', [ClienteController::class, 'store'])->name('clientes.store');
 
-    // Rota de Processos (MOVIDA PARA AQUI - Agora os advogados têm acesso!)
+    // Rota de Processos
     Route::get('/processos', function () {
         return view('processos.index');
     })->name('processos.index');
+
+    // --- ROTA DO MÓDULO FINANCEIRO (Restrita para Admin e Advogado) ---
+    // Criamos um grupo que exige a permissão 'acesso-financeiro'
+    Route::middleware('can:acesso-financeiro')->group(function () {
+        Volt::route('/financeiro', 'gestao-financeira')->name('financeiro.index');
+    });
 
     // Rotas de Perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -42,12 +49,9 @@ Route::middleware('auth')->group(function () {
 
 // 4. ÁREA ADMINISTRATIVA L&A FLOW (Apenas Administradores)
 Route::middleware(['auth', 'can:gerir-equipe'])->group(function () {
-
-    // Rota de Gestão de Equipe (Continua restrita apenas para Administradores)
     Route::get('/equipe', function () {
         return view('equipe.index');
     })->name('users.index');
-
 });
 
 require __DIR__ . '/auth.php';
