@@ -4,7 +4,6 @@ import forms from '@tailwindcss/forms';
 /** @type {import('tailwindcss').Config} */
 export default {
     content: [
-
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
         './resources/views/**/*.blade.php',
@@ -16,6 +15,14 @@ export default {
 
     theme: {
         extend: {
+            // As suas novas cores institucionais do Lacerda e Associados
+            colors: {
+                lacerda: {
+                    dark: '#1a2d2f',
+                    gold: '#b99b5e',
+                    teal: '#007a7f',
+                }
+            },
             fontFamily: {
                 sans: ['Inter', ...defaultTheme.fontFamily.sans],
             },
